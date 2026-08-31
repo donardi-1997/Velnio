@@ -61,6 +61,13 @@ class Settings(BaseSettings):
     TRACKING_EVENT_RETENTION_DAYS: int = 365
     TRACKING_MAX_PAYLOAD_SIZE: int = 51200
 
+    GOOGLE_DRIVE_MODE: str = "mock"
+    GOOGLE_DRIVE_CLIENT_ID: str = ""
+    GOOGLE_DRIVE_CLIENT_SECRET: str = ""
+    GOOGLE_DRIVE_REDIRECT_URI: str = "http://localhost:8000/api/google-drive/callback"
+    GOOGLE_DRIVE_SCOPES: str = "https://www.googleapis.com/auth/drive.file"
+    GOOGLE_DRIVE_MAX_FILE_MB: int = 25
+
     class Config:
         env_file = ".env"
         case_sensitive = True

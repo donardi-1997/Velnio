@@ -71,6 +71,7 @@ class Product(UUIDMixin, TimestampMixin, Base):
     analysis = relationship("ProductAnalysis", back_populates="product", uselist=False, cascade="all, delete-orphan")
     campaigns = relationship("Campaign", back_populates="product", cascade="all, delete-orphan")
     enrichment = relationship("ProductEnrichment", back_populates="product", uselist=False, cascade="all, delete-orphan")
+    source_documents = relationship("ProductSourceDocument", back_populates="product", cascade="all, delete-orphan", lazy="selectin")
 
 
 class ProductImage(UUIDMixin, TimestampMixin, Base):
@@ -92,6 +93,10 @@ class ProductImage(UUIDMixin, TimestampMixin, Base):
     width = Column(Integer, nullable=True)
     height = Column(Integer, nullable=True)
     selected = Column(Boolean, nullable=False, default=False)
+
+    external_source = Column(String(50), nullable=True)
+    external_file_id = Column(String(255), nullable=True)
+    external_file_name = Column(String(512), nullable=True)
 
     product = relationship("Product", back_populates="images")
     campaign = relationship("Campaign", back_populates="images")

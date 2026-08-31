@@ -392,3 +392,58 @@ export interface DemoEventResult {
   variant_a_events: number
   variant_b_events: number
 }
+
+export interface GoogleDriveStatus {
+  connected: boolean
+  google_email: string | null
+  google_name: string | null
+  connected_at: string | null
+}
+
+export interface GoogleDriveFile {
+  id: string
+  name: string
+  mime_type: string
+  size: number | null
+  thumbnail_url: string | null
+  created_time: string | null
+  modified_time: string | null
+  web_view_link: string | null
+  is_folder: boolean
+}
+
+export interface GoogleDriveFolder {
+  id: string
+  name: string
+  files: GoogleDriveFile[]
+  folders: GoogleDriveFile[]
+}
+
+export interface GoogleDriveSearchResult {
+  files: GoogleDriveFile[]
+  next_page_token: string | null
+}
+
+export interface GoogleDriveImportResponse {
+  id: string
+  file_name: string | null
+  file_type: string
+  status: string
+  storage_key: string | null
+  image_url: string | null
+  created_at: string
+}
+
+export interface ProductSourceDocument {
+  id: string
+  product_id: string
+  external_file_id: string
+  external_file_name: string | null
+  file_type: string
+  file_size: number | null
+  status: string
+  storage_key: string | null
+  content_text: string | null
+  error_message: string | null
+  created_at: string
+}

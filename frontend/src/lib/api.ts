@@ -164,4 +164,29 @@ export const api = {
       request<any>(`/campaigns/${campaignId}/demo/events`, { method: 'POST', body: JSON.stringify(data || {}) }),
     clearEvents: (campaignId: string) => request<any>(`/campaigns/${campaignId}/demo/events`, { method: 'DELETE' }),
   },
+  googleDrive: {
+    getStatus: () => request<any>('/google-drive/status'),
+    connect: () => request<any>('/google-drive/connect'),
+    connectMock: () => request<any>('/google-drive/connect-mock', { method: 'POST' }),
+    disconnect: () => request<any>('/google-drive/disconnect', { method: 'POST' }),
+    browse: (folderId: string, pageSize?: number, pageToken?: string) => {
+      const params = new URLSearchParams()
+      if (pageSize) params.set('page_size', String(pageSize))
+      if (pageToken) params.set('page_token', pageToken)
+      const qs = params.toString()
+      return request<any>(`/google-drive/browse/${folderId}${qs ? '?' + qs : ''}`)
+    },
+    search: (q: string, pageSize?: number) => {
+      const params = new URLSearchParams({ q })
+      if (pageSize) params.set('page_size', String(pageSize))
+      return request<any>(`/google-drive/search?${params.toString()}`)
+    },
+    importImage: (data: { file_id: string; product_id: string; purpose?: string; position?: number }) =>
+      request<any>('/google-drive/import-image', { method: 'POST', body: JSON.stringify(data) }),
+    importDocument: (data: { file_id: string; product_id: string; campaign_id?: string }) =>
+      request<any>('/google-drive/import-document', { method: 'POST', body: JSON.stringify(data) }),
+    importAsset: (data: { file_id: string; campaign_id: string; purpose?: string }) =>
+      request<any>('/google-drive/import-asset', { method: 'POST', body: JSON.stringify(data) }),
+    listDocuments: (productId: string) => request<any[]>(`/google-drive/documents/${productId}`),
+  },
 }

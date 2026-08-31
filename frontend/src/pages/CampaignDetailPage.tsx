@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
-import type { Campaign, Offer, SellingAngle, CampaignImage } from '../types'
+import type { Campaign, Offer, SellingAngle, CampaignImage, GoogleDriveFile } from '../types'
 import { CampaignPerformanceTab } from './CampaignPerformanceTab'
 import { CampaignExperimentsTab } from './CampaignExperimentsTab'
+import { GoogleDriveBrowser } from '../components/GoogleDriveBrowser'
 
 const statusColors: Record<string, string> = {
   DRAFT: 'bg-gray-500/20 text-gray-400',
@@ -36,6 +37,7 @@ export function CampaignDetailPage() {
   const [editingOffer, setEditingOffer] = useState(false)
   const [offerForm, setOfferForm] = useState<Partial<Offer>>({})
   const [vdForm, setVdForm] = useState<any>({})
+  const [showDriveBrowser, setShowDriveBrowser] = useState(false)
 
   const { data: campaign, isLoading } = useQuery({
     queryKey: ['campaign', id],
@@ -130,6 +132,11 @@ export function CampaignDetailPage() {
 
   const selectAssetMutation = useMutation({
     mutationFn: ({ imageId, purpose }: { imageId: string; purpose: string }) => api.campaigns.selectAsset(id!, imageId, purpose),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['campaign-assets', id] }),
+  })
+
+  const importDriveAssetMutation = useMutation({
+    mutationFn: (file: GoogleDriveFile) => api.googleDrive.importAsset({ file_id: file.id, campaign_id: id!, purpose: 'OTHER' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['campaign-assets', id] }),
   })
 
@@ -551,10 +558,22 @@ export function CampaignDetailPage() {
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-zinc-100">Visual Assets</h3>
-            <button onClick={() => generateAssetsMutation.mutate()} className="btn-secondary" disabled={generateAssetsMutation.isPending}>
-              {generateAssetsMutation.isPending ? 'Generating...' : 'Generate Launch Pack'}
-            </button>
+            <div className="flex gap-2">
+              <button onClick={() => setShowDriveBrowser(!showDriveBrowser)} className="btn-secondary text-sm">
+                {showDriveBrowser ? 'Hide Drive' : 'Import from Drive'}
+              </button>
+              <button onClick={() => generateAssetsMutation.mutate()} className="btn-secondary" disabled={generateAssetsMutation.isPending}>
+                {generateAssetsMutation.isPending ? 'Generating...' : 'Generate Launch Pack'}
+              </button>
+            </div>
           </div>
+          {showDriveBrowser && (
+            <GoogleDriveBrowser
+              selectionMode="asset"
+              onSelect={(file) => { importDriveAssetMutation.mutate(file); setShowDriveBrowser(false) }}
+              onClose={() => setShowDriveBrowser(false)}
+            />
+          )}
           {assets.length === 0 ? (
             <div className="bg-zinc-800 rounded-xl p-6 text-center py-12">
               <p className="text-zinc-400 mb-4">No assets generated yet</p>

@@ -52,5 +52,6 @@ class Campaign(UUIDMixin, TimestampMixin, Base):
     visual_direction = relationship("CampaignVisualDirection", back_populates="campaign", uselist=False, cascade="all, delete-orphan", lazy="selectin")
     images = relationship("ProductImage", back_populates="campaign", cascade="all, delete-orphan", lazy="selectin")
     variants = relationship("LandingVariant", back_populates="campaign", cascade="all, delete-orphan", lazy="selectin")
+    source_documents = relationship("ProductSourceDocument", back_populates="campaign", cascade="all, delete-orphan", lazy="selectin")
     tracking_events = relationship("TrackingEvent", back_populates="campaign", cascade="all, delete-orphan")
     performance_insights = relationship("CampaignPerformanceInsight", back_populates="campaign", cascade="all, delete-orphan")

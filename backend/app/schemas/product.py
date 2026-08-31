@@ -35,6 +35,12 @@ class ProductImageResponse(BaseModel):
     image_type: str
     position: int
     generated_by_ai: str
+    source_type: str = "SOURCE"
+    purpose: str = "ORIGINAL"
+    external_source: Optional[str] = None
+    external_file_id: Optional[str] = None
+    external_file_name: Optional[str] = None
+    selected: bool = False
 
     class Config:
         from_attributes = True

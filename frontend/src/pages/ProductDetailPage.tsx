@@ -2,7 +2,8 @@ import { useState, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
-import type { ProductEnrichment } from '../types'
+import type { ProductEnrichment, GoogleDriveFile } from '../types'
+import { GoogleDriveBrowser } from '../components/GoogleDriveBrowser'
 
 const campaignStatusColors: Record<string, string> = {
   DRAFT: 'bg-gray-500/20 text-gray-400',
@@ -25,6 +26,7 @@ export function ProductDetailPage() {
   const [importPreview, setImportPreview] = useState<any>(null)
   const [importForm, setImportForm] = useState<any>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showDriveBrowser, setShowDriveBrowser] = useState(false)
 
   const { data: product } = useQuery({ queryKey: ['product', id], queryFn: () => api.products.get(id!) })
   const { data: analysis } = useQuery({ queryKey: ['analysis', id], queryFn: () => api.products.get(id!).then(p => p.analysis), enabled: activeTab === 'analysis' })
@@ -46,6 +48,10 @@ export function ProductDetailPage() {
   })
   const uploadImagesMutation = useMutation({
     mutationFn: (files: File[]) => api.products.uploadImages(id!, files),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['product', id] }),
+  })
+  const importDriveImageMutation = useMutation({
+    mutationFn: (file: GoogleDriveFile) => api.googleDrive.importImage({ file_id: file.id, product_id: id!, purpose: 'ORIGINAL', position: product?.images?.length || 0 }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['product', id] }),
   })
 
@@ -224,11 +230,21 @@ export function ProductDetailPage() {
             <h3 className="font-semibold text-zinc-100">Product Images</h3>
             <div className="flex gap-2">
               <input ref={fileInputRef} type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e.target.files)} />
+              <button onClick={() => setShowDriveBrowser(!showDriveBrowser)} className="btn-secondary text-sm">
+                {showDriveBrowser ? 'Hide Drive' : 'Import from Drive'}
+              </button>
               <button onClick={() => fileInputRef.current?.click()} className="btn-secondary" disabled={uploadImagesMutation.isPending}>
                 {uploadImagesMutation.isPending ? 'Uploading...' : 'Upload Images'}
               </button>
             </div>
           </div>
+          {showDriveBrowser && (
+            <GoogleDriveBrowser
+              selectionMode="image"
+              onSelect={(file) => { importDriveImageMutation.mutate(file); setShowDriveBrowser(false) }}
+              onClose={() => setShowDriveBrowser(false)}
+            />
+          )}
           <div
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDrop}
