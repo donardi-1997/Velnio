@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.env
+*.db
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Docker
+.docker/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+test.db
+
+# Build
+*.egg-info/
+build/
+
+# Storage (generated files)
+backend/storage/
+
+# TypeScript build info
+frontend/tsconfig.tsbuildinfo

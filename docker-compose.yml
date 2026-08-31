@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: velnio
+      POSTGRES_PASSWORD: velnio
+      POSTGRES_DB: velnio
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U velnio"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://velnio:velnio@postgres:5432/velnio
+      DATABASE_URL_SYNC: postgresql+psycopg2://velnio:velnio@postgres:5432/velnio
+      JWT_SECRET: dev-secret-change-in-production
+      ENCRYPTION_KEY: dev-encryption-key-change-in-production
+      AI_PROVIDER: mock
+      SHOPIFY_MODE: mock
+      BILLING_PROVIDER: mock
+      FRONTEND_URL: http://localhost:5173
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: >
+      sh -c "alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:8000
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+
+volumes:
+  postgres_data:
