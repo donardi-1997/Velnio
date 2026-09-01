@@ -56,9 +56,9 @@ Each angle needs: name, target_audience, pain_point, main_promise, hook, descrip
         data = json.loads(response.choices[0].message.content)
         return data.get("angles", data) if isinstance(data, dict) else data
 
-    async def generate_selling_angles_for_campaign(self, product, campaign) -> List[Dict[str, Any]]:
+    async def generate_selling_angles_for_campaign(self, product, campaign, knowledge_context: str = "") -> List[Dict[str, Any]]:
         if hasattr(self, '_fallback'):
-            return await self._fallback.generate_selling_angles_for_campaign(product, campaign)
+            return await self._fallback.generate_selling_angles_for_campaign(product, campaign, knowledge_context)
         prompt = f"""Generate 3 selling angles for this campaign. Return JSON array.
 Product: {product.name}
 Description: {product.description or 'N/A'}
@@ -69,6 +69,9 @@ Campaign Currency: {campaign.currency}
 Campaign Target Audience: {campaign.target_audience or 'General'}
 Campaign Payment: {campaign.payment_strategy or 'Standard'}
 Campaign Shipping: {campaign.shipping_strategy or 'Standard'}
+
+Knowledge Context:
+{knowledge_context[:2000] if knowledge_context else 'No knowledge sources available.'}
 
 Each angle needs: name, target_audience, pain_point, main_promise, hook, description, score (0-100).
 Tailor angles specifically for the campaign target country and audience."""
@@ -197,6 +200,45 @@ Return JSON with:
 - next_test_type (string): HEADLINE_TEST, ANGLE_TEST, OFFER_TEST, PRICE_TEST, HERO_IMAGE_TEST, or CTA_TEST
 - next_test_hypothesis (string): Why this test should be run
 - confidence (number): 0-1 confidence in the analysis"""
+        response = await self.client.chat.completions.create(
+            model=settings.OPENAI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+        )
+        return json.loads(response.choices[0].message.content)
+
+    async def generate_campaign_brief(
+        self,
+        product,
+        campaign,
+        knowledge_context: str,
+    ) -> Dict[str, Any]:
+        if hasattr(self, '_fallback'):
+            return await self._fallback.generate_campaign_brief(product, campaign, knowledge_context)
+
+        product_name = getattr(product, "name", "Product")
+        description = getattr(product, "description", "") or ""
+        campaign_name = getattr(campaign, "name", "Campaign") if campaign else ""
+        target_country = getattr(campaign, "target_country", "US") if campaign else "US"
+
+        prompt = f"""Generate a campaign brief for this product. Return JSON.
+
+Product: {product_name}
+Description: {description[:500]}
+Campaign: {campaign_name}
+Target Country: {target_country}
+
+Knowledge Context:
+{knowledge_context[:2000] if knowledge_context else 'No knowledge sources available.'}
+
+Return JSON with:
+- product_summary (string): 1-2 sentence product summary
+- target_audience (string): Detailed target audience description
+- key_benefits (string): Top 3-5 key benefits for this product
+- tone_of_voice (string): Recommended tone for marketing
+- pricing_strategy (string): Recommended pricing approach
+- positioning (string): How to position this product in the market"""
+
         response = await self.client.chat.completions.create(
             model=settings.OPENAI_MODEL,
             messages=[{"role": "user", "content": prompt}],

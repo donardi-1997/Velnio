@@ -31,6 +31,13 @@ class LocalStorageProvider:
             content_type = response.headers.get("content-type", "image/jpeg")
             return await self.save_bytes(response.content, content_type, directory)
 
+    async def read_bytes(self, key: str) -> bytes:
+        full_path = os.path.join(self.base_path, key)
+        if not os.path.exists(full_path):
+            raise FileNotFoundError(f"Storage key not found: {key}")
+        async with aiofiles.open(full_path, "rb") as f:
+            return await f.read()
+
     async def delete(self, key: str) -> None:
         full_path = os.path.join(self.base_path, key)
         if os.path.exists(full_path):

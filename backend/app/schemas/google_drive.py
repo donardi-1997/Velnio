@@ -74,6 +74,11 @@ class ProductSourceDocumentResponse(BaseModel):
     status: str
     storage_key: Optional[str] = None
     content_text: Optional[str] = None
+    extracted_text: Optional[str] = None
+    character_count: Optional[int] = None
+    page_count: Optional[int] = None
+    extraction_error: Optional[str] = None
+    processed_at: Optional[datetime] = None
     error_message: Optional[str] = None
     created_at: datetime
 

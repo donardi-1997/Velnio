@@ -12,7 +12,7 @@ class AIProvider(ABC):
         pass
 
     @abstractmethod
-    async def generate_selling_angles_for_campaign(self, product, campaign) -> List[Dict[str, Any]]:
+    async def generate_selling_angles_for_campaign(self, product, campaign, knowledge_context: str = "") -> List[Dict[str, Any]]:
         pass
 
     @abstractmethod
@@ -38,5 +38,14 @@ class AIProvider(ABC):
         metrics: Dict[str, Any],
         variants: List[Dict[str, Any]],
         angles: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        pass
+
+    @abstractmethod
+    async def generate_campaign_brief(
+        self,
+        product,
+        campaign,
+        knowledge_context: str,
     ) -> Dict[str, Any]:
         pass

@@ -72,6 +72,7 @@ class Product(UUIDMixin, TimestampMixin, Base):
     campaigns = relationship("Campaign", back_populates="product", cascade="all, delete-orphan")
     enrichment = relationship("ProductEnrichment", back_populates="product", uselist=False, cascade="all, delete-orphan")
     source_documents = relationship("ProductSourceDocument", back_populates="product", cascade="all, delete-orphan", lazy="selectin")
+    knowledge_sources = relationship("KnowledgeSource", back_populates="product", cascade="all, delete-orphan", lazy="selectin")
 
 
 class ProductImage(UUIDMixin, TimestampMixin, Base):

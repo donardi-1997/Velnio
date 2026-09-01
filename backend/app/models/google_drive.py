@@ -12,6 +12,7 @@ class DocumentImportStatus(str, enum.Enum):
     PROCESSING = "PROCESSING"
     READY = "READY"
     FAILED = "FAILED"
+    NEEDS_OCR = "NEEDS_OCR"
 
 
 class GoogleDriveConnection(UUIDMixin, TimestampMixin, Base):
@@ -41,9 +42,13 @@ class ProductSourceDocument(UUIDMixin, TimestampMixin, Base):
     file_type = Column(String(50), nullable=False)
     file_size = Column(Integer, nullable=True)
     status = Column(String(50), nullable=False, default="IMPORTED")
+    extracted_text = Column(Text, nullable=True)
+    extraction_error = Column(Text, nullable=True)
+    page_count = Column(Integer, nullable=True)
+    character_count = Column(Integer, nullable=True)
     storage_key = Column(String(512), nullable=True)
     content_text = Column(Text, nullable=True)
-    error_message = Column(Text, nullable=True)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
     imported_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
     product = relationship("Product", back_populates="source_documents")

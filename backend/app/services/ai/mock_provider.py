@@ -55,7 +55,7 @@ class MockAIProvider(AIProvider):
     async def generate_selling_angles(self, product) -> List[Dict[str, Any]]:
         return await self._generate_angles(product.name, product.target_country, product.selling_price, None, None)
 
-    async def generate_selling_angles_for_campaign(self, product, campaign) -> List[Dict[str, Any]]:
+    async def generate_selling_angles_for_campaign(self, product, campaign, knowledge_context: str = "") -> List[Dict[str, Any]]:
         return await self._generate_angles(
             product.name,
             campaign.target_country,
@@ -429,4 +429,40 @@ class MockAIProvider(AIProvider):
             "next_test_type": next_test_type,
             "next_test_hypothesis": next_test_hypothesis,
             "confidence": 0.75 if sessions > 200 else 0.5,
+        }
+
+    async def generate_campaign_brief(
+        self,
+        product,
+        campaign,
+        knowledge_context: str,
+    ) -> Dict[str, Any]:
+        product_name = getattr(product, "name", "Product")
+        campaign_name = getattr(campaign, "name", "Campaign") if campaign else "Campaign"
+        description = getattr(product, "description", "") or ""
+
+        target_audience = (
+            f"Health-conscious adults aged 25-55 interested in {product_name.lower()}. "
+            "Primarily US-based shoppers who value quality and results."
+        )
+        key_benefits = (
+            f"High-quality {product_name.lower()} at competitive price. "
+            "Fast shipping, 30-day money-back guarantee, trusted by thousands of customers."
+        )
+        positioning = (
+            f"{product_name} solves a real problem for people looking for reliable solutions. "
+            "Position as the premium yet affordable choice in the market."
+        )
+
+        if knowledge_context:
+            target_audience += " Audience insights derived from uploaded knowledge sources."
+            positioning += " Positioning informed by customer feedback and competitive analysis."
+
+        return {
+            "product_summary": f"{product_name}: {description[:200]}" if description else product_name,
+            "target_audience": target_audience,
+            "key_benefits": key_benefits,
+            "tone_of_voice": "Confident, friendly, and solution-oriented",
+            "pricing_strategy": "Competitive pricing with emphasis on value and risk-free guarantee",
+            "positioning": positioning,
         }

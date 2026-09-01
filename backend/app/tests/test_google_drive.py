@@ -171,8 +171,11 @@ async def test_drive_import_document(client: AsyncClient):
     assert response.status_code == 200
     data = response.json()
     assert data["external_file_name"] == "ad-copy-draft.txt"
-    assert data["status"] == "IMPORTED"
+    assert data["status"] == "READY"
     assert data["content_text"] is not None
+    assert data["extracted_text"] is not None
+    assert data["character_count"] > 0
+    assert data["processed_at"] is not None
 
 
 @pytest.mark.asyncio

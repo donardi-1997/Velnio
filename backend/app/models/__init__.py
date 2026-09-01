@@ -14,6 +14,8 @@ from app.models.enrichment import ProductEnrichment
 from app.models.visual_direction import CampaignVisualDirection
 from app.models.tracking import TrackingEvent, LandingVariant, CampaignPerformanceInsight
 from app.models.google_drive import GoogleDriveConnection, ProductSourceDocument
+from app.models.knowledge import KnowledgeSource
+from app.models.brief import CampaignBrief
 
 __all__ = [
     "User", "Workspace", "WorkspaceMember",
@@ -25,4 +27,5 @@ __all__ = [
     "ProductEnrichment", "CampaignVisualDirection",
     "TrackingEvent", "LandingVariant", "CampaignPerformanceInsight",
     "GoogleDriveConnection", "ProductSourceDocument",
+    "KnowledgeSource", "CampaignBrief",
 ]

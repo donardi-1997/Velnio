@@ -189,4 +189,22 @@ export const api = {
       request<any>('/google-drive/import-asset', { method: 'POST', body: JSON.stringify(data) }),
     listDocuments: (productId: string) => request<any[]>(`/google-drive/documents/${productId}`),
   },
+  knowledge: {
+    list: (params?: { product_id?: string; campaign_id?: string; source_type?: string; status?: string }) => {
+      const query = new URLSearchParams()
+      if (params?.product_id) query.set('product_id', params.product_id)
+      if (params?.campaign_id) query.set('campaign_id', params.campaign_id)
+      if (params?.source_type) query.set('source_type', params.source_type)
+      if (params?.status) query.set('status', params.status)
+      const qs = query.toString()
+      return request<any[]>(`/knowledge/${qs ? '?' + qs : ''}`)
+    },
+    get: (id: string) => request<any>(`/knowledge/${id}`),
+    create: (data: any) => request<any>('/knowledge/', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: any) => request<any>(`/knowledge/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    delete: (id: string) => request<any>(`/knowledge/${id}`, { method: 'DELETE' }),
+  },
+  brief: {
+    generate: (campaignId: string) => request<any>(`/campaigns/${campaignId}/generate-brief`, { method: 'POST' }),
+  },
 }

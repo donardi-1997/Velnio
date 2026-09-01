@@ -444,6 +444,49 @@ export interface ProductSourceDocument {
   status: string
   storage_key: string | null
   content_text: string | null
+  extracted_text: string | null
+  character_count: number | null
+  page_count: number | null
+  extraction_error: string | null
+  processed_at: string | null
   error_message: string | null
   created_at: string
+}
+
+export interface KnowledgeSource {
+  id: string
+  workspace_id: string
+  product_id: string | null
+  campaign_id: string | null
+  source_type: string
+  content_type: string
+  title: string
+  content_text: string | null
+  url: string | null
+  source_document_id: string | null
+  content_hash: string | null
+  imported_at: string | null
+  last_verified_at: string | null
+  is_primary: boolean
+  status: string
+  created_by_user_id: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CampaignBrief {
+  id: string
+  campaign_id: string
+  workspace_id: string
+  product_summary: string | null
+  target_audience: string | null
+  key_benefits: string | null
+  tone_of_voice: string | null
+  pricing_strategy: string | null
+  positioning: string | null
+  generated_by_user_id: string
+  generated_at: string | null
+  credit_cost: string | null
+  created_at: string
+  updated_at: string
 }

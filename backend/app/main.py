@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.db.session import engine
-from app.api.routes import auth, workspace, stores, products, ai, angles, landings, credits, billing, dashboard, shopify, campaigns, product_import, enrichment, visual_assets, publish, tracking, variants, performance, demo, google_drive
+from app.api.routes import auth, workspace, stores, products, ai, angles, landings, credits, billing, dashboard, shopify, campaigns, product_import, enrichment, visual_assets, publish, tracking, variants, performance, demo, google_drive, knowledge
 
 
 @asynccontextmanager
@@ -14,7 +14,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Velnio API",
     description="Turn products into winning campaigns.",
-    version="0.5.0",
+    version="0.6.0",
     lifespan=lifespan,
 )
 
@@ -47,6 +47,7 @@ app.include_router(performance.router, prefix="/api/campaigns", tags=["performan
 app.include_router(demo.router, prefix="/api/campaigns", tags=["demo"])
 app.include_router(tracking.router, prefix="/api/tracking", tags=["tracking"])
 app.include_router(google_drive.router, prefix="/api/google-drive", tags=["google-drive"])
+app.include_router(knowledge.router, prefix="/api/knowledge", tags=["knowledge"])
 
 
 @app.get("/api/health")

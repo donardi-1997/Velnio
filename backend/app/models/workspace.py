@@ -27,6 +27,7 @@ class Workspace(UUIDMixin, TimestampMixin, Base):
     wallet = relationship("CreditWallet", back_populates="workspace", uselist=False, cascade="all, delete-orphan")
     subscription = relationship("Subscription", back_populates="workspace", uselist=False, cascade="all, delete-orphan")
     google_drive_connections = relationship("GoogleDriveConnection", back_populates="workspace", cascade="all, delete-orphan")
+    knowledge_sources = relationship("KnowledgeSource", back_populates="workspace", cascade="all, delete-orphan", lazy="selectin")
 
 
 class WorkspaceMember(UUIDMixin, TimestampMixin, Base):

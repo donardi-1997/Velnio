@@ -15,7 +15,7 @@ from app.schemas.campaign import CampaignCreate, CampaignUpdate, CampaignRespons
 from app.schemas.angle import SellingAngleResponse
 from app.schemas.landing import LandingPageResponse, LandingSectionUpdate
 from app.schemas.offer import OfferResponse, OfferUpdate
-from app.api.deps import get_current_workspace
+from app.api.deps import get_current_workspace, get_current_user
 from app.core.exceptions import NotFoundException, InsufficientCreditsException, BadRequestException
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -227,7 +227,15 @@ async def generate_campaign_angles(
 
     try:
         ai = get_ai_provider()
-        angles_data = await ai.generate_selling_angles_for_campaign(product, campaign)
+        from app.services.knowledge.context_builder import KnowledgeContextBuilder
+        context_builder = KnowledgeContextBuilder()
+        knowledge_context = await context_builder.build(
+            db=db,
+            product_id=product.id,
+            campaign_id=campaign.id,
+            workspace_id=workspace.id,
+        )
+        angles_data = await ai.generate_selling_angles_for_campaign(product, campaign, knowledge_context)
 
         existing_result = await db.execute(
             select(SellingAngle).where(SellingAngle.campaign_id == campaign_id)
@@ -638,3 +646,104 @@ async def publish_campaign(
         )
         await db.flush()
         raise BadRequestException(f"Publish failed: {str(e)[:200]}")
+
+
+@router.post("/{campaign_id}/generate-brief")
+async def generate_campaign_brief(
+    campaign_id: UUID,
+    workspace: Workspace = Depends(get_current_workspace),
+    user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.user import User
+    from app.models.brief import CampaignBrief
+    from app.models.knowledge import KnowledgeSource
+    from app.schemas.brief import CampaignBriefResponse
+    from app.services.knowledge.context_builder import KnowledgeContextBuilder
+
+    # Get campaign
+    result = await db.execute(
+        select(Campaign).where(Campaign.id == campaign_id, Campaign.workspace_id == workspace.id)
+    )
+    campaign = result.scalar_one_or_none()
+    if not campaign:
+        raise NotFoundException("Campaign")
+
+    # Get product
+    product_result = await db.execute(
+        select(Product).where(Product.id == campaign.product_id, Product.workspace_id == workspace.id)
+    )
+    product = product_result.scalar_one_or_none()
+    if not product:
+        raise NotFoundException("Product")
+
+    # Check credits
+    credit_result = await db.execute(
+        select(CreditWallet).where(CreditWallet.workspace_id == workspace.id)
+    )
+    wallet = credit_result.scalar_one_or_none()
+    if not wallet or wallet.balance < settings.PLAN_BRIEF_COST:
+        raise InsufficientCreditsException()
+
+    # Build knowledge context
+    context_builder = KnowledgeContextBuilder()
+    knowledge_context = await context_builder.build(
+        db=db,
+        product_id=product.id,
+        campaign_id=campaign.id,
+        workspace_id=workspace.id,
+    )
+
+    # Deduct credits
+    wallet.balance -= settings.PLAN_BRIEF_COST
+    tx = CreditTransaction(
+        workspace_id=workspace.id,
+        wallet_id=wallet.id,
+        amount=-settings.PLAN_BRIEF_COST,
+        transaction_type=TransactionType.USAGE,
+        description=f"Campaign brief generation for '{campaign.name}'",
+    )
+    db.add(tx)
+    await db.flush()
+
+    # Generate brief via AI
+    try:
+        ai = get_ai_provider()
+        brief_data = await ai.generate_campaign_brief(product, campaign, knowledge_context)
+    except Exception as e:
+        wallet.balance += settings.PLAN_BRIEF_COST
+        await db.flush()
+        raise BadRequestException(f"Brief generation failed: {str(e)[:200]}")
+
+    # Create or update brief
+    existing_result = await db.execute(
+        select(CampaignBrief).where(CampaignBrief.campaign_id == campaign.id)
+    )
+    brief = existing_result.scalar_one_or_none()
+
+    if brief:
+        for field in ["product_summary", "target_audience", "key_benefits", "tone_of_voice", "pricing_strategy", "positioning"]:
+            if field in brief_data:
+                setattr(brief, field, brief_data[field])
+        brief.generated_at = datetime.now(timezone.utc)
+        brief.generated_by_user_id = user.id
+        brief.credit_cost = settings.PLAN_BRIEF_COST
+    else:
+        brief = CampaignBrief(
+            campaign_id=campaign.id,
+            workspace_id=workspace.id,
+            product_summary=brief_data.get("product_summary"),
+            target_audience=brief_data.get("target_audience"),
+            key_benefits=brief_data.get("key_benefits"),
+            tone_of_voice=brief_data.get("tone_of_voice"),
+            pricing_strategy=brief_data.get("pricing_strategy"),
+            positioning=brief_data.get("positioning"),
+            generated_by_user_id=user.id,
+            generated_at=datetime.now(timezone.utc),
+            credit_cost=settings.PLAN_BRIEF_COST,
+        )
+        db.add(brief)
+
+    await db.flush()
+    await db.refresh(brief)
+    return brief

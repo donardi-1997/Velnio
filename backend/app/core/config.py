@@ -38,10 +38,11 @@ class Settings(BaseSettings):
     PLAN_OFFER_COST: int = 2
     PLAN_LANDING_COST: int = 5
     PLAN_SECTION_REGEN_COST: int = 1
-
+    PLAN_BRIEF_COST: int = 3
+    
     IMAGE_PROVIDER: str = "mock"
     OPENAI_IMAGE_MODEL: str = "dall-e-3"
-
+    
     STORAGE_PROVIDER: str = "local"
     LOCAL_STORAGE_PATH: str = "./storage"
     MAX_IMAGE_UPLOAD_MB: int = 10
@@ -67,6 +68,9 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_REDIRECT_URI: str = "http://localhost:8000/api/google-drive/callback"
     GOOGLE_DRIVE_SCOPES: str = "https://www.googleapis.com/auth/drive.file"
     GOOGLE_DRIVE_MAX_FILE_MB: int = 25
+
+    MAX_DOCUMENT_PROCESSING_MB: int = 25
+    MAX_AI_CONTEXT_CHARS: int = 50000
 
     class Config:
         env_file = ".env"

@@ -438,12 +438,37 @@ async def import_document_from_drive(
         external_file_name=file_data.get("name"),
         file_type=mime_type,
         file_size=file_size,
-        status=DocumentImportStatus.IMPORTED,
+        status=DocumentImportStatus.PROCESSING,
         storage_key=storage_key,
         content_text=content_text,
         imported_by_user_id=user.id,
     )
     db.add(doc)
+    await db.flush()
+    await db.refresh(doc)
+
+    # Auto-extract text
+    from app.services.knowledge.extraction import DocumentExtractionService
+    from app.services.storage import get_storage_provider
+
+    extraction_service = DocumentExtractionService()
+    storage = get_storage_provider()
+    result = await extraction_service.extract(doc, storage)
+
+    # Update document with extraction results
+    doc.extracted_text = result.text
+    doc.character_count = result.character_count
+    doc.page_count = result.page_count
+    doc.extraction_error = result.error
+    doc.processed_at = datetime.now(timezone.utc)
+
+    if result.status == "NEEDS_OCR":
+        doc.status = DocumentImportStatus.NEEDS_OCR
+    elif result.status == "FAILED":
+        doc.status = DocumentImportStatus.FAILED
+    else:
+        doc.status = DocumentImportStatus.READY
+
     await db.flush()
     await db.refresh(doc)
 

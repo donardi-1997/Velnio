@@ -86,7 +86,15 @@ async def generate_angles(
 
     try:
         ai = get_ai_provider()
-        angles_data = await ai.generate_selling_angles_for_campaign(product, campaign)
+        from app.services.knowledge.context_builder import KnowledgeContextBuilder
+        context_builder = KnowledgeContextBuilder()
+        knowledge_context = await context_builder.build(
+            db=db,
+            product_id=product.id,
+            campaign_id=campaign.id,
+            workspace_id=workspace.id,
+        )
+        angles_data = await ai.generate_selling_angles_for_campaign(product, campaign, knowledge_context)
 
         existing_result = await db.execute(
             select(SellingAngle).where(SellingAngle.campaign_id == campaign.id)
