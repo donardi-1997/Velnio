@@ -17,6 +17,8 @@ from app.models.product import (
     ProductStatus,
     SourceType,
 )
+from app.modules.billing.application.entitlements import EntitlementService
+from app.modules.billing.infrastructure.repository import BillingRepository
 from app.services.import_engine import import_product_from_url
 from app.services.storage import get_storage_provider
 
@@ -26,11 +28,13 @@ class ProductImportService:
 
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
+        self.entitlements = EntitlementService(BillingRepository(db))
 
     async def preview(self, url: str) -> dict:
         return await import_product_from_url(url)
 
     async def create(self, data, workspace_id: UUID) -> Product:
+        await self.entitlements.assert_can_create_product(workspace_id)
         product = Product(
             workspace_id=workspace_id,
             store_id=data.store_id,
