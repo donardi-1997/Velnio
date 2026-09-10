@@ -15,7 +15,7 @@ from app.core.logging import get_logger
 from app.core.security import ALGORITHM
 from app.models.store import ShopifyOAuthState, Store, StoreStatus
 from app.models.user import User
-from app.models.workspace import Workspace, WorkspaceMember
+from app.models.workspace import MemberRole, Workspace, WorkspaceMember
 from app.modules.billing.application.entitlements import EntitlementService
 from app.modules.billing.infrastructure.repository import BillingRepository
 from app.modules.commerce.infrastructure.repository import StoreRepository
@@ -42,7 +42,7 @@ class ShopifyConnectionService:
         shop = provider._normalize_shop_domain(shop_domain)
         await self._lock_workspace(workspace_id)
         existing = await self.repository.get_by_shop_domain(workspace_id, shop)
-        if existing is None:
+        if existing is None or existing.status == StoreStatus.DISCONNECTED:
             await self.entitlements.assert_can_add_store(workspace_id)
 
         now = datetime.now(timezone.utc)
@@ -89,7 +89,7 @@ class ShopifyConnectionService:
 
         await self._lock_workspace(workspace_id)
         existing = await self.repository.get_by_shop_domain(workspace_id, callback_shop)
-        if existing is None:
+        if existing is None or existing.status == StoreStatus.DISCONNECTED:
             await self.entitlements.assert_can_add_store(workspace_id)
 
         try:
@@ -226,7 +226,11 @@ class ShopifyConnectionService:
                 )
             )
         ).scalar_one_or_none()
-        if user is None or membership is None:
+        if (
+            user is None
+            or membership is None
+            or membership.role not in {MemberRole.OWNER, MemberRole.ADMIN}
+        ):
             raise BadRequestException("Shopify OAuth authorization is no longer valid")
 
         stored.consumed_at = now
