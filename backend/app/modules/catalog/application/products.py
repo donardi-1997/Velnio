@@ -3,6 +3,8 @@ from uuid import UUID
 
 from app.core.exceptions import NotFoundException
 from app.models.product import Product
+from app.modules.billing.application.entitlements import EntitlementService
+from app.modules.billing.infrastructure.repository import BillingRepository
 from app.modules.catalog.infrastructure.repository import ProductRepository
 from app.schemas.product import ProductCreate, ProductUpdate
 
@@ -10,6 +12,7 @@ from app.schemas.product import ProductCreate, ProductUpdate
 class ProductService:
     def __init__(self, repository: ProductRepository) -> None:
         self.repository = repository
+        self.entitlements = EntitlementService(BillingRepository(repository.db))
 
     async def list(self, workspace_id: UUID) -> Sequence[Product]:
         return await self.repository.list_for_workspace(workspace_id)
@@ -21,6 +24,7 @@ class ProductService:
         return product
 
     async def create(self, data: ProductCreate, workspace_id: UUID) -> Product:
+        await self.entitlements.assert_can_create_product(workspace_id)
         product = Product(
             workspace_id=workspace_id,
             name=data.name,
