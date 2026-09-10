@@ -1,7 +1,8 @@
 import uuid
-from typing import Any, Dict, Optional
-from app.services.shopify.base import ShopifyProvider
+from typing import Any, Dict
+
 from app.core.logging import get_logger
+from app.services.shopify.base import ShopifyProvider
 
 logger = get_logger(__name__)
 
@@ -17,22 +18,32 @@ class MockShopifyProvider(ShopifyProvider):
             "scope": "read_products,write_products",
         }
 
-    async def get_shop(self, access_token: str) -> Dict[str, Any]:
+    async def get_shop(self, access_token: str, shop_domain: str = "") -> Dict[str, Any]:
         return {
             "name": "Mock Shop",
-            "domain": "mock-shop.myshopify.com",
+            "domain": shop_domain or "mock-shop.myshopify.com",
             "email": "admin@mock-shop.com",
             "currency": "USD",
         }
 
-    async def create_product(self, access_token: str, product_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_product(
+        self,
+        access_token: str,
+        shop_domain: str,
+        product_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
         return {
             "id": f"mock_product_{uuid.uuid4().hex[:8]}",
             "title": product_data.get("title", "Product"),
             "status": "active",
         }
 
-    async def create_page(self, access_token: str, page_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_page(
+        self,
+        access_token: str,
+        shop_domain: str,
+        page_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
         return {
             "id": f"mock_page_{uuid.uuid4().hex[:8]}",
             "title": page_data.get("title", "Page"),
@@ -42,7 +53,7 @@ class MockShopifyProvider(ShopifyProvider):
     async def publish_product(self, product, store=None) -> Dict[str, Any]:
         product_id = f"mock_product_{uuid.uuid4().hex[:8]}"
         page_id = f"mock_page_{uuid.uuid4().hex[:8]}"
-        logger.info(f"Mock publishing product {product.name} - ID: {product_id}")
+        logger.info("Mock publishing product %s - ID: %s", product.name, product_id)
         return {
             "status": "published",
             "provider": "mock",
@@ -53,18 +64,7 @@ class MockShopifyProvider(ShopifyProvider):
     async def publish_campaign(self, campaign, product, store, angle, landing, offer) -> Dict[str, Any]:
         product_id = f"mock_product_{uuid.uuid4().hex[:8]}"
         page_id = f"mock_page_{uuid.uuid4().hex[:8]}"
-        logger.info(f"Mock publishing campaign '{campaign.name}' - Product: {product_id}, Page: {page_id}")
-
-        offer_info = ""
-        if offer:
-            offer_info = f" | Offer: {offer.offer_type} @ ${offer.primary_price}"
-
-        landing_info = ""
-        if landing:
-            landing_info = f" | Landing: {landing.title}"
-
-        logger.info(f"Campaign details: country={campaign.target_country}, currency={campaign.currency}, price={campaign.selling_price}{offer_info}{landing_info}")
-
+        logger.info("Mock publishing campaign '%s' - Product: %s, Page: %s", campaign.name, product_id, page_id)
         return {
             "status": "published",
             "provider": "mock",
@@ -73,4 +73,4 @@ class MockShopifyProvider(ShopifyProvider):
         }
 
     async def disconnect(self) -> None:
-        pass
+        return None
