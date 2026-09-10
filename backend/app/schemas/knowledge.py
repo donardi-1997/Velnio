@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
@@ -25,6 +25,8 @@ class KnowledgeSourceUpdate(BaseModel):
 
 
 class KnowledgeSourceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     workspace_id: UUID
     product_id: Optional[UUID] = None
@@ -43,6 +45,3 @@ class KnowledgeSourceResponse(BaseModel):
     created_by_user_id: UUID
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
