@@ -28,3 +28,8 @@ class InsufficientCreditsException(AppException):
 
 class BadRequestException(AppException):
     pass
+
+
+class BadGatewayException(AppException):
+    def __init__(self, detail: str = "Upstream service request failed"):
+        super().__init__(detail=detail, status_code=status.HTTP_502_BAD_GATEWAY)
