@@ -5,12 +5,10 @@ import time
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.plan import Plan
-from app.models.workspace import WorkspaceMember
 
 
 async def _seed_plans(db: AsyncSession) -> None:
@@ -131,9 +129,9 @@ async def test_stripe_webhook_syncs_subscription_and_is_idempotent(
     await _seed_plans(db_session)
     _, headers = await _register(client, "stripe-webhook@test.com")
 
-    result = await db_session.execute(select(WorkspaceMember))
-    membership = result.scalar_one()
-    workspace_id = str(membership.workspace_id)
+    workspace = await client.get("/api/workspace", headers=headers)
+    assert workspace.status_code == 200
+    workspace_id = workspace.json()["id"]
 
     monkeypatch.setattr(settings, "BILLING_PROVIDER", "stripe")
     monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_velnio")
