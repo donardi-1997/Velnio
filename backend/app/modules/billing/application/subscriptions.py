@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
+
 from app.core.config import settings
 from app.core.exceptions import BadRequestException, NotFoundException
 from app.models.plan import Plan
@@ -118,6 +120,14 @@ class SubscriptionService:
 
         if await self.repository.webhook_event_exists("STRIPE", event_id):
             return True
+        try:
+            # Claim the event before side effects. The unique constraint makes
+            # concurrent webhook retries safe; rollback removes the claim if
+            # processing later fails.
+            await self.repository.add_webhook_event("STRIPE", event_id, event_type)
+        except IntegrityError:
+            await self.repository.db.rollback()
+            return True
 
         data = self._mapping(event.get("data"))
         obj = self._mapping(data.get("object"))
@@ -160,7 +170,6 @@ class SubscriptionService:
                     subscription.status = SubscriptionStatus.PAST_DUE
                     await self.repository.flush_and_refresh_subscription(subscription)
 
-        await self.repository.add_webhook_event("STRIPE", event_id, event_type)
         await self.repository.db.commit()
         return False
 
@@ -204,6 +213,8 @@ class SubscriptionService:
             workspace_id = subscription.workspace_id
         if workspace_id is None:
             raise BadRequestException("Stripe subscription is missing workspace metadata")
+        if subscription is not None and subscription.workspace_id != workspace_id:
+            raise BadRequestException("Stripe subscription workspace mismatch")
 
         if subscription is None:
             subscription = await self.repository.get_subscription(workspace_id)
