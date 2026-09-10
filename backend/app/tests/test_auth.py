@@ -1,6 +1,8 @@
 import pytest
 from httpx import AsyncClient
 
+from app.core.security import create_access_token
+
 
 @pytest.mark.asyncio
 async def test_register(client: AsyncClient):
@@ -45,6 +47,18 @@ async def test_me(client: AsyncClient):
     response = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     assert response.json()["email"] == "me@test.com"
+
+
+@pytest.mark.asyncio
+async def test_me_rejects_malformed_subject(client: AsyncClient):
+    token = create_access_token("not-a-uuid")
+
+    response = await client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio

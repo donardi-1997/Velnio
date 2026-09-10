@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://velnio:velnio@localhost:5432/velnio"
     DATABASE_URL_SYNC: str = "postgresql+psycopg2://velnio:velnio@localhost:5432/velnio"
 
-    JWT_SECRET: str = "dev-secret-change-in-production"
+    JWT_SECRET: str = "dev-secret-change-in-production-velnio"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
