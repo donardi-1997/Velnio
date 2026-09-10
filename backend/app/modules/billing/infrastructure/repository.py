@@ -5,6 +5,7 @@ from typing import Sequence
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -74,16 +75,19 @@ class BillingRepository:
         await self.db.refresh(subscription)
         return subscription
 
-    async def webhook_event_exists(self, provider: str, provider_event_id: str) -> bool:
-        result = await self.db.execute(
-            select(BillingWebhookEvent.id).where(
-                BillingWebhookEvent.provider == provider,
-                BillingWebhookEvent.provider_event_id == provider_event_id,
-            )
-        )
-        return result.scalar_one_or_none() is not None
+    async def claim_webhook_event(
+        self,
+        provider: str,
+        provider_event_id: str,
+        event_type: str,
+    ) -> bool:
+        """Claim a provider event inside the current transaction.
 
-    async def add_webhook_event(self, provider: str, provider_event_id: str, event_type: str) -> None:
+        The unique constraint serializes concurrent deliveries. If another
+        transaction commits the same event first, the insert raises and this
+        delivery becomes a no-op. If the first transaction rolls back, the
+        waiting insert can succeed and safely process the event.
+        """
         self.db.add(
             BillingWebhookEvent(
                 provider=provider,
@@ -91,7 +95,12 @@ class BillingRepository:
                 event_type=event_type,
             )
         )
-        await self.db.flush()
+        try:
+            await self.db.flush()
+        except IntegrityError:
+            await self.db.rollback()
+            return False
+        return True
 
     async def count_active_stores(self, workspace_id: UUID) -> int:
         result = await self.db.execute(
