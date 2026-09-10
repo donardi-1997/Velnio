@@ -28,6 +28,7 @@ const offerTypeLabels: Record<string, string> = {
 }
 
 type Tab = 'details' | 'angles' | 'offer' | 'visual-direction' | 'assets' | 'landing' | 'publish-readiness' | 'publish' | 'performance' | 'experiments'
+type AssetFeedback = { type: 'success' | 'error'; message: string }
 
 export function CampaignDetailPage() {
   const { id } = useParams<{ id: string }>()!
@@ -38,6 +39,9 @@ export function CampaignDetailPage() {
   const [offerForm, setOfferForm] = useState<Partial<Offer>>({})
   const [vdForm, setVdForm] = useState<any>({})
   const [showDriveBrowser, setShowDriveBrowser] = useState(false)
+  const [regenerationAssetId, setRegenerationAssetId] = useState<string | null>(null)
+  const [regenerationInstructions, setRegenerationInstructions] = useState('')
+  const [assetFeedback, setAssetFeedback] = useState<AssetFeedback | null>(null)
 
   const { data: campaign, isLoading } = useQuery({
     queryKey: ['campaign', id],
@@ -127,12 +131,45 @@ export function CampaignDetailPage() {
 
   const generateAssetsMutation = useMutation({
     mutationFn: () => api.campaigns.generateAssets(id!),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['campaign-assets', id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaign-assets', id] })
+      queryClient.invalidateQueries({ queryKey: ['campaign', id] })
+      queryClient.invalidateQueries({ queryKey: ['credits'] })
+      queryClient.invalidateQueries({ queryKey: ['credit-transactions'] })
+    },
   })
 
   const selectAssetMutation = useMutation({
     mutationFn: ({ imageId, purpose }: { imageId: string; purpose: string }) => api.campaigns.selectAsset(id!, imageId, purpose),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['campaign-assets', id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaign-assets', id] })
+      queryClient.invalidateQueries({ queryKey: ['campaign', id] })
+    },
+  })
+
+  const regenerateAssetMutation = useMutation({
+    mutationFn: ({ imageId, instructions }: { imageId: string; instructions?: string }) =>
+      api.campaigns.regenerateAsset(id!, imageId, instructions),
+    onMutate: () => setAssetFeedback(null),
+    onSuccess: (result: any) => {
+      queryClient.invalidateQueries({ queryKey: ['campaign-assets', id] })
+      queryClient.invalidateQueries({ queryKey: ['campaign', id] })
+      queryClient.invalidateQueries({ queryKey: ['credits'] })
+      queryClient.invalidateQueries({ queryKey: ['credit-transactions'] })
+      setRegenerationAssetId(null)
+      setRegenerationInstructions('')
+      const credits = typeof result?.credits_charged === 'number' ? ` ${result.credits_charged} credit${result.credits_charged === 1 ? '' : 's'} charged.` : ''
+      setAssetFeedback({
+        type: 'success',
+        message: `New ${result?.image?.purpose?.toLowerCase?.() || 'asset'} variation created. The original asset was preserved.${credits}`,
+      })
+    },
+    onError: (error: Error) => {
+      setAssetFeedback({
+        type: 'error',
+        message: error?.message || 'Asset regeneration failed. No credits were charged.',
+      })
+    },
   })
 
   const importDriveAssetMutation = useMutation({
@@ -556,17 +593,27 @@ export function CampaignDetailPage() {
 
       {activeTab === 'assets' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-zinc-100">Visual Assets</h3>
-            <div className="flex gap-2">
-              <button onClick={() => setShowDriveBrowser(!showDriveBrowser)} className="btn-secondary text-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="font-semibold text-zinc-100">Visual Assets</h3>
+              <p className="mt-1 text-sm text-zinc-500">Regeneration creates a new candidate and keeps the original asset unchanged.</p>
+            </div>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+              <button onClick={() => setShowDriveBrowser(!showDriveBrowser)} className="btn-secondary text-sm w-full sm:w-auto">
                 {showDriveBrowser ? 'Hide Drive' : 'Import from Drive'}
               </button>
-              <button onClick={() => generateAssetsMutation.mutate()} className="btn-secondary" disabled={generateAssetsMutation.isPending}>
+              <button onClick={() => generateAssetsMutation.mutate()} className="btn-secondary w-full sm:w-auto" disabled={generateAssetsMutation.isPending || regenerateAssetMutation.isPending}>
                 {generateAssetsMutation.isPending ? 'Generating...' : 'Generate Launch Pack'}
               </button>
             </div>
           </div>
+
+          {assetFeedback && (
+            <div className={`rounded-lg border px-4 py-3 text-sm ${assetFeedback.type === 'success' ? 'border-green-500/30 bg-green-500/10 text-green-300' : 'border-red-500/30 bg-red-500/10 text-red-300'}`}>
+              {assetFeedback.message}
+            </div>
+          )}
+
           {showDriveBrowser && (
             <GoogleDriveBrowser
               selectionMode="asset"
@@ -582,29 +629,98 @@ export function CampaignDetailPage() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-4">
-              {assets.map((asset: CampaignImage) => (
-                <div key={asset.id} className={`bg-zinc-800 rounded-xl overflow-hidden border ${asset.selected ? 'border-indigo-500' : 'border-zinc-700'}`}>
-                  <div className="aspect-square bg-zinc-700">
-                    <img src={asset.image_url} alt={asset.purpose} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="p-3 flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-medium text-zinc-300 uppercase">{asset.purpose}</span>
-                      <span className="text-xs text-zinc-500 ml-2">({asset.source_type})</span>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {assets.map((asset: CampaignImage) => {
+                const editingRegeneration = regenerationAssetId === asset.id
+                const regeneratingThisAsset = regenerateAssetMutation.isPending && regenerateAssetMutation.variables?.imageId === asset.id
+
+                return (
+                  <div key={asset.id} className={`bg-zinc-800 rounded-xl overflow-hidden border ${asset.selected ? 'border-indigo-500 ring-1 ring-indigo-500/40' : 'border-zinc-700'}`}>
+                    <div className="aspect-square bg-zinc-700">
+                      <img src={asset.image_url} alt={asset.purpose} className="w-full h-full object-cover" />
                     </div>
-                    {!asset.selected ? (
-                      <div className="flex gap-1">
-                        <button onClick={() => selectAssetMutation.mutate({ imageId: asset.id, purpose: 'HERO' })} className="text-xs px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-500">
-                          Use as Hero
+                    <div className="p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-medium text-zinc-300 uppercase">{asset.purpose}</span>
+                            <span className="text-xs text-zinc-500">({asset.source_type})</span>
+                          </div>
+                          {asset.selected && <span className="mt-1 inline-block text-xs text-indigo-400 font-medium">Selected</span>}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {!asset.selected && (
+                          <button
+                            onClick={() => selectAssetMutation.mutate({ imageId: asset.id, purpose: 'HERO' })}
+                            disabled={selectAssetMutation.isPending || regenerateAssetMutation.isPending}
+                            className="text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Use as Hero
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            setRegenerationAssetId(editingRegeneration ? null : asset.id)
+                            setRegenerationInstructions('')
+                            setAssetFeedback(null)
+                          }}
+                          disabled={regenerateAssetMutation.isPending}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-zinc-600 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {regeneratingThisAsset ? 'Regenerating...' : editingRegeneration ? 'Close' : 'Regenerate'}
                         </button>
                       </div>
-                    ) : (
-                      <span className="text-xs text-indigo-400 font-medium">Selected</span>
-                    )}
+
+                      {editingRegeneration && (
+                        <div className="rounded-lg border border-zinc-700 bg-zinc-900/60 p-3 space-y-3">
+                          <div>
+                            <label className="block text-xs font-medium text-zinc-300 mb-1.5" htmlFor={`regeneration-${asset.id}`}>
+                              Variation instructions <span className="font-normal text-zinc-500">(optional)</span>
+                            </label>
+                            <textarea
+                              id={`regeneration-${asset.id}`}
+                              className="input min-h-[88px] resize-y text-sm"
+                              maxLength={1000}
+                              placeholder="Example: brighter background, tighter product crop, more premium composition..."
+                              value={regenerationInstructions}
+                              onChange={(e) => setRegenerationInstructions(e.target.value)}
+                              disabled={regeneratingThisAsset}
+                            />
+                            <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-zinc-500">
+                              <span>Credits are charged only after a successful generation.</span>
+                              <span>{regenerationInstructions.length}/1000</span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                            <button
+                              onClick={() => {
+                                setRegenerationAssetId(null)
+                                setRegenerationInstructions('')
+                              }}
+                              className="btn-secondary text-sm"
+                              disabled={regeneratingThisAsset}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => regenerateAssetMutation.mutate({
+                                imageId: asset.id,
+                                instructions: regenerationInstructions.trim() || undefined,
+                              })}
+                              className="btn-primary text-sm"
+                              disabled={regeneratingThisAsset}
+                            >
+                              {regeneratingThisAsset ? 'Creating variation...' : 'Create variation'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
