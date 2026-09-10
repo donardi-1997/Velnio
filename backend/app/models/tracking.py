@@ -72,7 +72,11 @@ class LandingVariant(UUIDMixin, TimestampMixin, Base):
     source_variant = relationship("LandingVariant", remote_side="LandingVariant.id", backref="cloned_variants")
     selling_angle = relationship("SellingAngle")
     offer = relationship("Offer")
-    landing_page = relationship("LandingPage", foreign_keys="[LandingVariant.landing_page_id]")
+    landing_page = relationship(
+        "LandingPage",
+        back_populates="variants",
+        foreign_keys=[landing_page_id],
+    )
     tracking_events = relationship("TrackingEvent", back_populates="variant")
 
     __table_args__ = (
