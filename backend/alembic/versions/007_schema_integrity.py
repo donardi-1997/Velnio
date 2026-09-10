@@ -4,8 +4,9 @@ Revision ID: 007_schema_integrity
 Revises: 006
 Create Date: 2026-09-10
 
-This revision removes the redundant LandingPage -> LandingVariant back-reference
-and brings product_source_documents in line with the current ORM model.
+This revision removes the redundant LandingPage -> LandingVariant back-reference,
+aligns campaign-centric nullability/indexes, and brings
+product_source_documents in line with the current ORM model.
 """
 from typing import Sequence, Union
 
@@ -24,6 +25,42 @@ def upgrade() -> None:
     # reverse foreign-key column on landing_pages creates a DDL dependency
     # cycle and two competing sources of truth.
     op.drop_column("landing_pages", "variant_id")
+
+    # Campaign-centric landings and angles may exist without a direct product
+    # pointer; the campaign remains their primary aggregate owner. The old
+    # one-landing-per-product constraint also prevented multiple campaigns for
+    # one product from owning independent landing pages.
+    op.alter_column(
+        "landing_pages",
+        "product_id",
+        existing_type=UUID(as_uuid=True),
+        nullable=True,
+    )
+    op.drop_constraint(
+        "landing_pages_product_id_key",
+        "landing_pages",
+        type_="unique",
+    )
+    op.alter_column(
+        "selling_angles",
+        "product_id",
+        existing_type=UUID(as_uuid=True),
+        nullable=True,
+    )
+
+    # Keep database indexes aligned with the ORM's query paths.
+    op.create_index(
+        "ix_offers_campaign_id",
+        "offers",
+        ["campaign_id"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_selling_angles_product_id",
+        "selling_angles",
+        ["product_id"],
+        unique=False,
+    )
 
     # Revision 005 shipped an earlier extraction schema. Preserve existing
     # data by renaming the error column and add the fields used by the current
@@ -60,6 +97,26 @@ def downgrade() -> None:
         "product_source_documents",
         "extraction_error",
         new_column_name="error_message",
+    )
+
+    op.drop_index("ix_selling_angles_product_id", table_name="selling_angles")
+    op.drop_index("ix_offers_campaign_id", table_name="offers")
+    op.alter_column(
+        "selling_angles",
+        "product_id",
+        existing_type=UUID(as_uuid=True),
+        nullable=False,
+    )
+    op.create_unique_constraint(
+        "landing_pages_product_id_key",
+        "landing_pages",
+        ["product_id"],
+    )
+    op.alter_column(
+        "landing_pages",
+        "product_id",
+        existing_type=UUID(as_uuid=True),
+        nullable=False,
     )
 
     op.add_column(
