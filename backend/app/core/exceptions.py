@@ -26,6 +26,11 @@ class InsufficientCreditsException(AppException):
         super().__init__(detail="Insufficient credits", status_code=status.HTTP_402_PAYMENT_REQUIRED)
 
 
+class PlanLimitException(AppException):
+    def __init__(self, detail: str):
+        super().__init__(detail=detail, status_code=status.HTTP_402_PAYMENT_REQUIRED)
+
+
 class BadRequestException(AppException):
     pass
 

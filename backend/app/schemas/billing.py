@@ -1,7 +1,8 @@
-from pydantic import BaseModel, ConfigDict
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
-from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PlanResponse(BaseModel):
@@ -27,4 +28,31 @@ class SubscriptionResponse(BaseModel):
     current_period_start: Optional[datetime] = None
     current_period_end: Optional[datetime] = None
     provider: str
+    cancel_at_period_end: bool = False
+    trial_end: Optional[datetime] = None
     plan: Optional[PlanResponse] = None
+
+
+class CheckoutSessionRequest(BaseModel):
+    plan_code: str = Field(min_length=2, max_length=50)
+
+
+class BillingSessionResponse(BaseModel):
+    url: str
+    session_id: Optional[str] = None
+
+
+class BillingWebhookResponse(BaseModel):
+    received: bool = True
+    duplicate: bool = False
+
+
+class EntitlementsResponse(BaseModel):
+    plan_code: str
+    plan_name: str
+    subscription_status: str
+    max_stores: int
+    stores_used: int
+    max_products_per_month: int
+    products_used_this_month: int
+    included_credits: int

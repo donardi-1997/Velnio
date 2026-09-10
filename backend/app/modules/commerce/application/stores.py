@@ -2,6 +2,8 @@ from uuid import UUID
 
 from app.core.exceptions import NotFoundException
 from app.models.store import Store, StoreStatus
+from app.modules.billing.application.entitlements import EntitlementService
+from app.modules.billing.infrastructure.repository import BillingRepository
 from app.modules.commerce.infrastructure.repository import StoreRepository
 from app.schemas.store import MockStoreConnect
 
@@ -9,11 +11,13 @@ from app.schemas.store import MockStoreConnect
 class StoreService:
     def __init__(self, repository: StoreRepository) -> None:
         self.repository = repository
+        self.entitlements = EntitlementService(BillingRepository(repository.db))
 
     async def list(self, workspace_id: UUID):
         return await self.repository.list_for_workspace(workspace_id)
 
     async def mock_connect(self, data: MockStoreConnect, workspace_id: UUID) -> Store:
+        await self.entitlements.assert_can_add_store(workspace_id)
         store = Store(
             workspace_id=workspace_id,
             name=data.name,

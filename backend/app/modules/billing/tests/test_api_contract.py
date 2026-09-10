@@ -20,10 +20,14 @@ def test_credit_routes_preserved():
     }
 
 
-def test_billing_routes_preserved():
+def test_billing_routes_preserved_and_extended():
     assert set(_contract(subscriptions.router)) == {
         ("GET", "/plans"),
         ("GET", "/subscription"),
+        ("GET", "/entitlements"),
+        ("POST", "/checkout"),
+        ("POST", "/portal"),
+        ("POST", "/webhook"),
     }
 
 
