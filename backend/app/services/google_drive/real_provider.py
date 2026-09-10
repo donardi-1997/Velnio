@@ -1,5 +1,8 @@
 from typing import Optional, Dict, Any
+from urllib.parse import urlencode
+
 import httpx
+
 from app.services.google_drive.base import GoogleDriveProvider
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -32,18 +35,16 @@ class RealGoogleDriveProvider(GoogleDriveProvider):
         }
 
     async def get_auth_url(self, state: str) -> str:
-        scopes = self._get_scopes()
         params = {
             "client_id": self._get_client_id(),
             "redirect_uri": self._get_redirect_uri(),
             "response_type": "code",
-            "scope": scopes,
+            "scope": self._get_scopes(),
             "access_type": "offline",
             "prompt": "consent",
             "state": state,
         }
-        query = "&".join(f"{k}={v}" for k, v in params.items())
-        return f"{GOOGLE_AUTH_URL}?{query}"
+        return f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
 
     async def exchange_code(self, code: str) -> Dict[str, Any]:
         async with httpx.AsyncClient() as client:
