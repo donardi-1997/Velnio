@@ -4,8 +4,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
 from uuid import UUID
 
-from sqlalchemy.exc import IntegrityError
-
 from app.core.config import settings
 from app.core.exceptions import BadRequestException, NotFoundException
 from app.models.plan import Plan
@@ -118,59 +116,66 @@ class SubscriptionService:
         event_id = str(event["id"])
         event_type = str(event["type"])
 
-        if await self.repository.webhook_event_exists("STRIPE", event_id):
+        claimed = await self.repository.claim_webhook_event(
+            "STRIPE", event_id, event_type
+        )
+        if not claimed:
             return True
+
         try:
-            # Claim the event before side effects. The unique constraint makes
-            # concurrent webhook retries safe; rollback removes the claim if
-            # processing later fails.
-            await self.repository.add_webhook_event("STRIPE", event_id, event_type)
-        except IntegrityError:
-            await self.repository.db.rollback()
-            return True
+            data = self._mapping(event.get("data"))
+            obj = self._mapping(data.get("object"))
 
-        data = self._mapping(event.get("data"))
-        obj = self._mapping(data.get("object"))
+            if event_type == "checkout.session.completed":
+                subscription_id = self._string_id(obj.get("subscription"))
+                if subscription_id:
+                    remote = await self.provider.retrieve_subscription(subscription_id)
+                    subscription, _, trial_started = await self._sync_remote_subscription(remote)
+                    if trial_started:
+                        await self._allocate_plan_credits(
+                            subscription, "Stripe trial activation"
+                        )
 
-        if event_type == "checkout.session.completed":
-            subscription_id = self._string_id(obj.get("subscription"))
-            if subscription_id:
-                remote = await self.provider.retrieve_subscription(subscription_id)
-                subscription, plan_changed = await self._sync_remote_subscription(remote)
-                if subscription.status == SubscriptionStatus.TRIALING and plan_changed:
-                    await self._allocate_plan_credits(subscription, "Stripe trial activation")
-
-        elif event_type in {
-            "customer.subscription.created",
-            "customer.subscription.updated",
-            "customer.subscription.deleted",
-        }:
-            subscription, plan_changed = await self._sync_remote_subscription(obj)
-            if subscription.status == SubscriptionStatus.TRIALING and plan_changed:
-                await self._allocate_plan_credits(subscription, "Stripe trial activation")
-
-        elif event_type == "invoice.paid":
-            subscription_id = self._invoice_subscription_id(obj)
-            if subscription_id:
-                remote = await self.provider.retrieve_subscription(subscription_id)
-                subscription, _ = await self._sync_remote_subscription(remote)
-                if subscription.status == SubscriptionStatus.ACTIVE:
+            elif event_type in {
+                "customer.subscription.created",
+                "customer.subscription.updated",
+                "customer.subscription.deleted",
+            }:
+                subscription, _, trial_started = await self._sync_remote_subscription(obj)
+                if trial_started:
                     await self._allocate_plan_credits(
-                        subscription,
-                        f"Stripe invoice paid: {obj.get('id', 'invoice')}",
+                        subscription, "Stripe trial activation"
                     )
 
-        elif event_type == "invoice.payment_failed":
-            subscription_id = self._invoice_subscription_id(obj)
-            if subscription_id:
-                subscription = await self.repository.get_subscription_by_provider_id(
-                    subscription_id
-                )
-                if subscription is not None:
-                    subscription.status = SubscriptionStatus.PAST_DUE
-                    await self.repository.flush_and_refresh_subscription(subscription)
+            elif event_type == "invoice.paid":
+                subscription_id = self._invoice_subscription_id(obj)
+                billing_reason = str(obj.get("billing_reason") or "")
+                if subscription_id:
+                    remote = await self.provider.retrieve_subscription(subscription_id)
+                    subscription, _, _ = await self._sync_remote_subscription(remote)
+                    if (
+                        subscription.status == SubscriptionStatus.ACTIVE
+                        and billing_reason in {"subscription_create", "subscription_cycle"}
+                    ):
+                        await self._allocate_plan_credits(
+                            subscription,
+                            f"Stripe invoice paid: {obj.get('id', 'invoice')}",
+                        )
 
-        await self.repository.db.commit()
+            elif event_type == "invoice.payment_failed":
+                subscription_id = self._invoice_subscription_id(obj)
+                if subscription_id:
+                    subscription = await self.repository.get_subscription_by_provider_id(
+                        subscription_id
+                    )
+                    if subscription is not None:
+                        subscription.status = SubscriptionStatus.PAST_DUE
+                        await self.repository.flush_and_refresh_subscription(subscription)
+
+            await self.repository.db.commit()
+        except Exception:
+            await self.repository.db.rollback()
+            raise
         return False
 
     async def _allocate_plan_credits(self, subscription: Subscription, description: str) -> None:
@@ -189,7 +194,7 @@ class SubscriptionService:
     async def _sync_remote_subscription(
         self,
         remote: dict[str, Any],
-    ) -> tuple[Subscription, bool]:
+    ) -> tuple[Subscription, bool, bool]:
         provider_subscription_id = self._string_id(remote.get("id"))
         if not provider_subscription_id:
             raise BadRequestException("Invalid Stripe subscription payload")
@@ -232,9 +237,15 @@ class SubscriptionService:
         plan_changed = subscription.plan_id != plan.id
 
         status_value = str(remote.get("status") or "").lower()
+        mapped_status = self._map_status(status_value)
+        trial_started = (
+            mapped_status == SubscriptionStatus.TRIALING
+            and subscription.trial_used_at is None
+        )
+
         subscription.workspace_id = workspace_id
         subscription.plan_id = plan.id
-        subscription.status = self._map_status(status_value)
+        subscription.status = mapped_status
         subscription.provider = "STRIPE"
         subscription.provider_subscription_id = provider_subscription_id
         subscription.provider_customer_id = customer_id
@@ -243,11 +254,11 @@ class SubscriptionService:
         subscription.current_period_start = self._subscription_period(remote, "current_period_start")
         subscription.current_period_end = self._subscription_period(remote, "current_period_end")
         subscription.trial_end = self._from_unix(remote.get("trial_end"))
-        if subscription.status == SubscriptionStatus.TRIALING and subscription.trial_used_at is None:
+        if trial_started:
             subscription.trial_used_at = datetime.now(timezone.utc)
 
         await self.repository.flush_and_refresh_subscription(subscription)
-        return subscription, plan_changed
+        return subscription, plan_changed, trial_started
 
     @staticmethod
     def _mapping(value: Any) -> dict[str, Any]:
