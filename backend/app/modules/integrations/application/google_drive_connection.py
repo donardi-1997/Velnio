@@ -71,7 +71,7 @@ class GoogleDriveConnectionService:
     async def validate_oauth_state(self, state: str) -> tuple[UUID, UUID]:
         try:
             payload = jwt.decode(state, settings.JWT_SECRET, algorithms=[ALGORITHM])
-        except jwt.PyJWTError as exc:
+        except jwt.InvalidTokenError as exc:
             raise BadRequestException("Invalid or expired Google Drive OAuth state") from exc
 
         if payload.get("type") != OAUTH_STATE_TYPE:
