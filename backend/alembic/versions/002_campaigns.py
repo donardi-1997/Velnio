@@ -18,13 +18,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create campaign_status enum
+    # PostgreSQL enum types are created automatically with their owning tables.
+    # Explicitly creating them first caused duplicate-type failures on clean DBs.
     campaign_status = sa.Enum('DRAFT', 'ANALYZING', 'ANGLE_READY', 'LANDING_READY', 'READY', 'PUBLISHED', 'FAILED', 'ARCHIVED', name='campaign_status')
-    campaign_status.create(op.get_bind(), checkfirst=True)
-
-    # Create offer_type enum
     offer_type = sa.Enum('STANDARD', 'DISCOUNT', 'BUNDLE', 'BOGO', 'FREE_SHIPPING', 'COD', 'CUSTOM', name='offer_type')
-    offer_type.create(op.get_bind(), checkfirst=True)
 
     # Create campaigns table
     op.create_table(
@@ -133,11 +130,11 @@ def upgrade() -> None:
         has_landing = conn.execute(landings_table.select().where(landings_table.c.product_id == product_id).limit(1)).fetchone()
 
         if has_landing:
-            campaign_status = 'READY'
+            campaign_status_value = 'READY'
         elif has_angle:
-            campaign_status = 'ANGLE_READY'
+            campaign_status_value = 'ANGLE_READY'
         else:
-            campaign_status = 'DRAFT'
+            campaign_status_value = 'DRAFT'
 
         campaign_name = f"Default Campaign - {target_country}"
         if has_angle:
@@ -151,7 +148,7 @@ def upgrade() -> None:
             product_id=product_id,
             store_id=row[2],
             name=campaign_name,
-            status=campaign_status,
+            status=campaign_status_value,
             target_country=target_country,
             target_language=target_language,
             currency=currency,
