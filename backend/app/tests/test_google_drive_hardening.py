@@ -16,7 +16,7 @@ async def _get_token(client: AsyncClient) -> str:
             "last_name": "Hardening",
         },
     )
-    assert response.status_code == 200
+    assert response.status_code == 201
     return response.json()["access_token"]
 
 
