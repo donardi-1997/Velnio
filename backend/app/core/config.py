@@ -1,37 +1,38 @@
-from pydantic_settings import BaseSettings
-from typing import List
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
+
     APP_NAME: str = "Velnio"
     APP_ENV: str = "development"
-    
+
     DATABASE_URL: str = "postgresql+asyncpg://velnio:velnio@localhost:5432/velnio"
     DATABASE_URL_SYNC: str = "postgresql+psycopg2://velnio:velnio@localhost:5432/velnio"
-    
+
     JWT_SECRET: str = "dev-secret-change-in-production"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 30
-    
+
     ENCRYPTION_KEY: str = "dev-encryption-key-change-in-production"
-    
+
     AI_PROVIDER: str = "mock"
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
-    
+
     SHOPIFY_MODE: str = "mock"
     SHOPIFY_API_KEY: str = ""
     SHOPIFY_API_SECRET: str = ""
     SHOPIFY_SCOPES: str = "read_products,write_products"
     SHOPIFY_REDIRECT_URI: str = "http://localhost:8000/api/shopify/callback"
     SHOPIFY_API_VERSION: str = "2024-10"
-    
+
     BILLING_PROVIDER: str = "mock"
-    
+
     FRONTEND_URL: str = "http://localhost:5173"
-    
-    CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
-    
+
+    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+
     FREE_CREDITS: int = 10
     PLAN_ANALYSIS_COST: int = 1
     PLAN_ANGLES_COST: int = 2
@@ -39,10 +40,10 @@ class Settings(BaseSettings):
     PLAN_LANDING_COST: int = 5
     PLAN_SECTION_REGEN_COST: int = 1
     PLAN_BRIEF_COST: int = 3
-    
+
     IMAGE_PROVIDER: str = "mock"
     OPENAI_IMAGE_MODEL: str = "dall-e-3"
-    
+
     STORAGE_PROVIDER: str = "local"
     LOCAL_STORAGE_PATH: str = "./storage"
     MAX_IMAGE_UPLOAD_MB: int = 10
@@ -71,10 +72,6 @@ class Settings(BaseSettings):
 
     MAX_DOCUMENT_PROCESSING_MB: int = 25
     MAX_AI_CONTEXT_CHARS: int = 50000
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
 
 
 settings = Settings()
