@@ -154,7 +154,7 @@ export function BillingPage() {
       <div className="mb-5">
         <h2 className="text-xl font-bold">Choose your plan</h2>
         <p className="mt-1 text-sm text-[var(--text-secondary)]">
-          Your first paid subscription includes a 7-day trial when eligible. Plan changes after activation are handled securely in the billing portal.
+          Your first paid subscription can include a trial when eligible. Plan changes after activation are handled securely in the billing portal.
         </p>
       </div>
 
