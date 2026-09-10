@@ -2,7 +2,7 @@ import { useAuthStore } from '../stores/auth'
 
 const API_BASE = '/api'
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = useAuthStore.getState().accessToken
   const isFormData = options.body instanceof FormData
   const headers: Record<string, string> = isFormData
