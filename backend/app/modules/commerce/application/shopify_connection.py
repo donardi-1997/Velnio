@@ -262,8 +262,18 @@ class ShopifyConnectionService:
         return value
 
     @staticmethod
-    def _validate_required_scopes(scope_value: str) -> None:
+    def _scope_is_granted(required_scope: str, granted: set[str]) -> bool:
+        if required_scope in granted:
+            return True
+        if required_scope.startswith("read_"):
+            matching_write_scope = f"write_{required_scope[5:]}"
+            return matching_write_scope in granted
+        return False
+
+    @classmethod
+    def _validate_required_scopes(cls, scope_value: str) -> None:
         granted = {item.strip() for item in str(scope_value).split(",") if item.strip()}
         required = {item.strip() for item in settings.SHOPIFY_SCOPES.split(",") if item.strip()}
-        if not required.issubset(granted):
+        missing = {scope for scope in required if not cls._scope_is_granted(scope, granted)}
+        if missing:
             raise BadRequestException("Shopify did not grant all required permissions; reconnect your store")
