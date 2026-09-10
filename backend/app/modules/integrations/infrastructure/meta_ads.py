@@ -35,6 +35,20 @@ class MetaAdsProvider(ABC):
         raise NotImplementedError
 
 
+class UnsupportedMetaAdsProvider(MetaAdsProvider):
+    async def get_auth_url(self, state: str) -> str:
+        raise MetaAdsProviderError("Unsupported Meta Ads provider mode")
+
+    async def exchange_code(self, code: str) -> dict[str, Any]:
+        raise MetaAdsProviderError("Unsupported Meta Ads provider mode")
+
+    async def get_profile(self, access_token: str) -> dict[str, Any]:
+        raise MetaAdsProviderError("Unsupported Meta Ads provider mode")
+
+    async def list_ad_accounts(self, access_token: str) -> list[dict[str, Any]]:
+        raise MetaAdsProviderError("Unsupported Meta Ads provider mode")
+
+
 class MockMetaAdsProvider(MetaAdsProvider):
     async def get_auth_url(self, state: str) -> str:
         return f"mock://meta-ads/oauth?state={state}"
@@ -225,4 +239,4 @@ def get_meta_ads_provider() -> MetaAdsProvider:
         return MockMetaAdsProvider()
     if mode == "real":
         return RealMetaAdsProvider()
-    raise MetaAdsProviderError("Unsupported Meta Ads provider mode")
+    return UnsupportedMetaAdsProvider()
