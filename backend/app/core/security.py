@@ -41,5 +41,5 @@ def create_refresh_token(subject: str, expires_delta: Optional[timedelta] = None
 def decode_token(token: str) -> Optional[dict[str, Any]]:
     try:
         return jwt.decode(token, settings.JWT_SECRET, algorithms=[ALGORITHM])
-    except jwt.PyJWTError:
+    except jwt.InvalidTokenError:
         return None
