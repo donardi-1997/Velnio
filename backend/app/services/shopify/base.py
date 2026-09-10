@@ -1,14 +1,22 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from typing import Any, Dict, Mapping
 
 
 class ShopifyProvider(ABC):
     @abstractmethod
-    def get_install_url(self) -> str:
+    def get_install_url(self, shop_domain: str, state: str) -> str:
         pass
 
     @abstractmethod
-    async def handle_callback(self, code: str, shop: str) -> Dict[str, Any]:
+    def verify_callback_hmac(self, query_params: Mapping[str, str]) -> None:
+        pass
+
+    @abstractmethod
+    async def exchange_code(self, code: str, shop_domain: str) -> Dict[str, Any]:
+        pass
+
+    @abstractmethod
+    async def refresh_access_token(self, refresh_token: str, shop_domain: str) -> Dict[str, Any]:
         pass
 
     @abstractmethod
