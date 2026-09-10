@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
-from app.api.routes import ai, enrichment, product_import, products
+from app.api.routes import ai, enrichment, product_import
+from app.modules.catalog.api import products
 
 router = APIRouter()
 router.include_router(products.router, prefix="/products", tags=["products"])
