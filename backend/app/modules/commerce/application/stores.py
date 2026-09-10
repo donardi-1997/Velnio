@@ -1,7 +1,8 @@
 from uuid import UUID
 
+from app.core.config import settings
 from app.core.encryption import encrypt_value
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import BadRequestException, NotFoundException
 from app.models.store import Store, StoreStatus
 from app.modules.billing.application.entitlements import EntitlementService
 from app.modules.billing.infrastructure.repository import BillingRepository
@@ -18,6 +19,8 @@ class StoreService:
         return await self.repository.list_for_workspace(workspace_id)
 
     async def mock_connect(self, data: MockStoreConnect, workspace_id: UUID) -> Store:
+        if settings.SHOPIFY_MODE != "mock":
+            raise BadRequestException("Mock Shopify connections are disabled")
         await self.entitlements.assert_can_add_store(workspace_id)
         store = Store(
             workspace_id=workspace_id,
