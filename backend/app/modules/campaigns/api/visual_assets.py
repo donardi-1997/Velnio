@@ -3,7 +3,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_workspace
@@ -38,6 +38,10 @@ class VisualDirectionUpdate(BaseModel):
     photography_style: Optional[str] = None
     audience_context: Optional[str] = None
     additional_instructions: Optional[str] = None
+
+
+class AssetRegenerationRequest(BaseModel):
+    instructions: Optional[str] = Field(default=None, max_length=1000)
 
 
 @router.post("/{campaign_id}/visual-direction/generate", response_model=VisualDirectionResponse)
@@ -75,6 +79,22 @@ async def generate_launch_pack(
     db: AsyncSession = Depends(get_db),
 ):
     return await CampaignVisualAssetService(db).generate_launch_pack(campaign_id, workspace.id)
+
+
+@router.post("/{campaign_id}/assets/{image_id}/regenerate")
+async def regenerate_asset(
+    campaign_id: UUID,
+    image_id: UUID,
+    data: Optional[AssetRegenerationRequest] = None,
+    workspace: Workspace = Depends(get_current_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    return await CampaignVisualAssetService(db).regenerate_asset(
+        campaign_id,
+        image_id,
+        workspace.id,
+        data.instructions if data else None,
+    )
 
 
 @router.post("/{campaign_id}/assets/{image_id}/select")
