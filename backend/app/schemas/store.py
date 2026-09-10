@@ -1,10 +1,12 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
 
 
 class StoreResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     workspace_id: UUID
     name: str
@@ -14,9 +16,6 @@ class StoreResponse(BaseModel):
     country: str
     currency: str
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class MockStoreConnect(BaseModel):
