@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadGatewayException, NotFoundException
+from app.core.exceptions import AppException, BadGatewayException, NotFoundException
 from app.core.logging import get_logger
 from app.models.product import Product, ProductStatus
 from app.models.store import Store
@@ -46,7 +46,7 @@ class ProductPublishingService:
 
         try:
             publish_result = await get_shopify_provider().publish_product(product, store)
-        except (NotFoundException, BadGatewayException):
+        except AppException:
             raise
         except Exception as exc:
             logger.error("Shopify product publish failed: %s", type(exc).__name__)
