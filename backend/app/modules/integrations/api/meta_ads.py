@@ -19,6 +19,7 @@ router = APIRouter()
 class MetaAdsStatus(BaseModel):
     connected: bool
     expired: bool = False
+    mode: str
     meta_user_id: str | None = None
     meta_user_name: str | None = None
     connected_at: datetime | None = None
@@ -43,7 +44,8 @@ async def get_meta_ads_status(
     workspace: Workspace = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    return await _service(db).status(workspace.id)
+    status = await _service(db).status(workspace.id)
+    return {**status, "mode": settings.META_ADS_MODE}
 
 
 @router.get("/connect")
