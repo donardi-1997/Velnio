@@ -38,6 +38,15 @@ async def get_performance_timeline(
     return await service.get_timeline(campaign_id, workspace.id, from_date, to_date)
 
 
+@router.get("/{campaign_id}/performance/winner")
+async def get_experiment_winner(
+    campaign_id: UUID,
+    workspace: Workspace = Depends(get_current_workspace),
+    service: PerformanceService = Depends(get_performance_service),
+):
+    return await service.get_winner(campaign_id, workspace.id)
+
+
 @router.get("/{campaign_id}/variants/performance")
 async def get_variant_performance(
     campaign_id: UUID,

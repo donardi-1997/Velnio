@@ -136,21 +136,28 @@ class CampaignVariantService:
         variants = {str(item.id): item for item in result.scalars().all()}
 
         for variant_id, weight in weights.items():
-            if variant_id not in variants:
+            variant = variants.get(variant_id)
+            if variant is None:
                 raise NotFoundException(f"Variant {variant_id}")
-            if weight < 0:
-                raise BadRequestException(f"Weight for {variant_id} must be >= 0")
+            if variant.status == "ARCHIVED":
+                raise BadRequestException(f"Archived variant {variant_id} cannot receive traffic")
+            if weight < 0 or weight > 100:
+                raise BadRequestException(f"Weight for {variant_id} must be between 0 and 100")
 
-        for variant_id, weight in weights.items():
-            variant = variants[variant_id]
+        resolved_weights: dict[str, float] = {}
+        for variant_id, variant in variants.items():
+            if variant.status == "ARCHIVED":
+                continue
+            weight = float(weights.get(variant_id, 0))
             variant.traffic_weight = weight
-            if weight > 0 and variant.status == "DRAFT":
+            if weight > 0 and variant.status in {"DRAFT", "PAUSED"}:
                 variant.status = "ACTIVE"
             elif weight == 0 and variant.status == "ACTIVE":
                 variant.status = "PAUSED"
+            resolved_weights[variant_id] = weight
 
         await self.db.flush()
-        return {"status": "ok", "weights": weights}
+        return {"status": "ok", "weights": resolved_weights}
 
     async def update(self, campaign_id: UUID, variant_id: UUID, workspace_id: UUID, data) -> dict:
         await self._get_campaign(campaign_id, workspace_id)
@@ -171,7 +178,9 @@ class CampaignVariantService:
                 raise BadRequestException("Invalid status")
             variant.status = data.status
         if data.traffic_weight is not None:
-            variant.traffic_weight = data.traffic_weight
+            raise BadRequestException(
+                "Use the traffic distribution endpoint to update variant weights"
+            )
         if data.selling_angle_id is not None:
             variant.selling_angle_id = data.selling_angle_id
         if data.offer_id is not None:

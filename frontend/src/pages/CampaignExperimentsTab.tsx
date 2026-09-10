@@ -1,11 +1,18 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '../lib/api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api, request } from '../lib/api'
 import { formatCurrency, formatNumber, formatPercent, variantStatusColors } from '../lib/format'
-import type { Campaign, LandingVariant, VariantPerformance } from '../types'
+import type { Campaign, ExperimentAnalysis, LandingVariant, VariantPerformance } from '../types'
 
 interface Props {
   campaign: Campaign
+}
+
+type WinnerAnalysis = ExperimentAnalysis & {
+  minimum_sessions_per_variant?: number
+  minimum_purchases_per_variant?: number
+  leader_variant_id?: string
+  runner_variant_id?: string
 }
 
 export function CampaignExperimentsTab({ campaign }: Props) {
@@ -15,6 +22,12 @@ export function CampaignExperimentsTab({ campaign }: Props) {
   const [editingTraffic, setEditingTraffic] = useState(false)
   const [trafficWeights, setTrafficWeights] = useState<Record<string, number>>({})
   const [archiveConfirmId, setArchiveConfirmId] = useState<string | null>(null)
+
+  const invalidateExperimentQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['campaign-variants', campaign.id] })
+    queryClient.invalidateQueries({ queryKey: ['campaign-variant-perf', campaign.id] })
+    queryClient.invalidateQueries({ queryKey: ['campaign-experiment-winner', campaign.id] })
+  }
 
   const { data: variants = [], isLoading } = useQuery({
     queryKey: ['campaign-variants', campaign.id],
@@ -26,13 +39,18 @@ export function CampaignExperimentsTab({ campaign }: Props) {
     queryFn: () => api.performance.getVariants(campaign.id),
   })
 
+  const { data: winner, isLoading: winnerLoading } = useQuery<WinnerAnalysis>({
+    queryKey: ['campaign-experiment-winner', campaign.id],
+    queryFn: () => request<WinnerAnalysis>(`/campaigns/${campaign.id}/performance/winner`),
+  })
+
   const createMutation = useMutation({
     mutationFn: () => api.variants.create(campaign.id, {
       name: createForm.name,
       clone_from_variant_id: createForm.clone_from_variant_id || null,
     }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['campaign-variants', campaign.id] })
+      invalidateExperimentQueries()
       setShowCreate(false)
       setCreateForm({ name: '', clone_from_variant_id: null })
     },
@@ -41,8 +59,7 @@ export function CampaignExperimentsTab({ campaign }: Props) {
   const updateTrafficMutation = useMutation({
     mutationFn: () => api.variants.updateTraffic(campaign.id, trafficWeights),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['campaign-variants', campaign.id] })
-      queryClient.invalidateQueries({ queryKey: ['campaign-variant-perf', campaign.id] })
+      invalidateExperimentQueries()
       setEditingTraffic(false)
     },
   })
@@ -50,7 +67,7 @@ export function CampaignExperimentsTab({ campaign }: Props) {
   const archiveMutation = useMutation({
     mutationFn: (variantId: string) => api.variants.update(campaign.id, variantId, { status: 'ARCHIVED' }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['campaign-variants', campaign.id] })
+      invalidateExperimentQueries()
       setArchiveConfirmId(null)
     },
   })
@@ -58,112 +75,126 @@ export function CampaignExperimentsTab({ campaign }: Props) {
   const pauseMutation = useMutation({
     mutationFn: ({ variantId, status }: { variantId: string; status: string }) =>
       api.variants.update(campaign.id, variantId, { status }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['campaign-variants', campaign.id] }),
+    onSuccess: invalidateExperimentQueries,
   })
 
   if (isLoading) {
     return <div className="text-center py-12 text-zinc-400">Loading experiment variants...</div>
   }
 
-  const activeVariants = variants.filter((v: LandingVariant) => v.status !== 'ARCHIVED')
+  const activeVariants = variants.filter((variant: LandingVariant) => variant.status !== 'ARCHIVED')
   const perfMap: Record<string, VariantPerformance> = {}
-  if (variantPerf?.variants) {
-    variantPerf.variants.forEach((v: VariantPerformance) => {
-      if (v.variant_id) perfMap[v.variant_id] = v
-    })
-  }
-
-  const totalTraffic = activeVariants.reduce((sum: number, v: LandingVariant) => sum + (v.traffic_weight || 0), 0)
-  const trafficValid = Math.abs(totalTraffic - 100) < 0.01
+  variantPerf?.variants?.forEach((variant: VariantPerformance) => {
+    if (variant.variant_id) perfMap[variant.variant_id] = variant
+  })
 
   const startEditTraffic = () => {
-    const w: Record<string, number> = {}
-    activeVariants.forEach((v: LandingVariant) => { w[v.id] = v.traffic_weight || 0 })
-    setTrafficWeights(w)
+    const weights: Record<string, number> = {}
+    activeVariants.forEach((variant: LandingVariant) => {
+      weights[variant.id] = variant.traffic_weight || 0
+    })
+    setTrafficWeights(weights)
     setEditingTraffic(true)
   }
 
-  const leader = variantPerf?.variants?.reduce((best: VariantPerformance | null, v: VariantPerformance) => {
-    if (!best || v.conversion_rate > best.conversion_rate) return v
-    return best
-  }, null)
+  const currentTrafficTotal = activeVariants.reduce(
+    (sum: number, variant: LandingVariant) => sum + (variant.traffic_weight || 0),
+    0,
+  )
+  const editedTrafficTotal = Object.values(trafficWeights).reduce((sum, weight) => sum + weight, 0)
+  const trafficDraftValid = Math.abs(editedTrafficTotal - 100) < 0.01
+  const hasTraffic = activeVariants.some(
+    (variant: LandingVariant) => variant.status === 'ACTIVE' && variant.traffic_weight > 0,
+  )
 
-  const controlPerf = variantPerf?.variants?.find((v: VariantPerformance) => v.variant_key === 'A')
-  const lift = leader && controlPerf && controlPerf.conversion_rate > 0
-    ? ((leader.conversion_rate - controlPerf.conversion_rate) / controlPerf.conversion_rate * 100)
-    : null
-
-  const hasTraffic = activeVariants.some((v: LandingVariant) => v.traffic_weight > 0)
+  const confirmedWinner = winner?.status === 'leader' && winner.variant_id
+    ? perfMap[winner.variant_id]
+    : undefined
+  const confirmedWinnerVariant = winner?.status === 'leader' && winner.variant_id
+    ? activeVariants.find((variant: LandingVariant) => variant.id === winner.variant_id)
+    : undefined
+  const winnerLabel = confirmedWinnerVariant
+    ? `${confirmedWinnerVariant.variant_key} · ${confirmedWinnerVariant.name}`
+    : winner?.variant_name || confirmedWinner?.variant_name || 'Winning variant'
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-zinc-100">Experiments</h3>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-zinc-100">Experiments</h3>
+          <p className="mt-1 text-xs text-zinc-500">
+            Traffic is attributed by variant and purchases are verified from Shopify orders.
+          </p>
+        </div>
         <button onClick={() => setShowCreate(true)} className="btn-secondary">+ Create Variant</button>
       </div>
 
-      {/* Experiment Summary */}
       {activeVariants.length >= 2 && (
         <div className="bg-zinc-800 rounded-xl p-6 border border-zinc-700">
-          <div className="flex items-center gap-3 mb-3">
+          <div className="flex flex-wrap items-center gap-3 mb-4">
             <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
               hasTraffic ? 'bg-green-500/20 text-green-400' : 'bg-zinc-500/20 text-zinc-400'
             }`}>
               {hasTraffic ? 'Running' : 'No traffic'}
             </span>
             <span className="text-xs text-zinc-500">
-              Traffic split: {activeVariants.map((v: LandingVariant) => `${v.variant_key} ${v.traffic_weight || 0}%`).join(' / ')}
+              Traffic split: {activeVariants.map((variant: LandingVariant) => `${variant.variant_key} ${variant.traffic_weight || 0}%`).join(' / ')}
             </span>
+            {Math.abs(currentTrafficTotal - 100) >= 0.01 && (
+              <span className="text-xs text-amber-400">Configured total: {currentTrafficTotal}%</span>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-            {activeVariants.map((v: LandingVariant) => {
-              const p = perfMap[v.id]
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 text-sm mb-4">
+            {activeVariants.map((variant: LandingVariant) => {
+              const performance = perfMap[variant.id]
               return (
-                <div key={v.id} className="bg-zinc-700/50 rounded-lg p-3">
-                  <div className="font-medium text-zinc-100">{v.variant_key} &middot; {v.name}</div>
+                <div key={variant.id} className="bg-zinc-700/50 rounded-lg p-3">
+                  <div className="font-medium text-zinc-100">{variant.variant_key} · {variant.name}</div>
                   <div className="text-zinc-400 text-xs mt-1">
-                    {p ? `${formatNumber(p.sessions)} sessions` : 'No sessions'}
+                    {performance ? `${formatNumber(performance.sessions)} sessions · ${formatNumber(performance.purchases)} purchases` : 'No attributed sessions'}
                   </div>
                 </div>
               )
             })}
           </div>
 
-          {leader && leader.variant_key !== 'A' && lift != null && (
+          {winnerLoading ? (
+            <div className="p-4 bg-zinc-700/50 rounded-lg text-sm text-zinc-400">
+              Calculating statistical significance...
+            </div>
+          ) : confirmedWinner ? (
             <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-              <div className="text-xs font-medium text-green-400 uppercase tracking-wide mb-1">Analysis</div>
+              <div className="text-xs font-medium text-green-400 uppercase tracking-wide mb-1">
+                Statistically significant winner
+              </div>
               <p className="text-sm text-zinc-200">
-                Variant {leader.variant_name || leader.variant_key} is currently leading with a{' '}
-                {formatPercent(leader.conversion_rate)} conversion rate vs {formatPercent(controlPerf?.conversion_rate || 0)}.
-                {lift > 0 && ` Lift: +${lift.toFixed(0)}%`}
+                {winnerLabel} is winning at {formatPercent(confirmedWinner.conversion_rate)} conversion.
+                {typeof winner?.lift === 'number' && ` Lift: ${winner.lift >= 0 ? '+' : ''}${winner.lift.toFixed(1)}%.`}
+                {typeof winner?.confidence === 'number' && ` Confidence: ${(winner.confidence * 100).toFixed(1)}%.`}
               </p>
             </div>
-          )}
-
-          {leader && leader.variant_key === 'A' && (
-            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-              <div className="text-xs font-medium text-blue-400 uppercase tracking-wide mb-1">Analysis</div>
-              <p className="text-sm text-zinc-200">
-                Control (A) is currently the best performer at {formatPercent(controlPerf?.conversion_rate || 0)} conversion rate.
-                Consider testing new variants to find a winning combination.
+          ) : (
+            <div className="p-4 bg-zinc-700/50 border border-zinc-700 rounded-lg">
+              <div className="text-xs font-medium text-zinc-300 uppercase tracking-wide mb-1">
+                Collecting evidence
+              </div>
+              <p className="text-sm text-zinc-400">
+                {winner?.reason || 'More attributed traffic is needed before Velnio can call a winner.'}
               </p>
-            </div>
-          )}
-
-          {!leader && (
-            <div className="p-4 bg-zinc-700/50 rounded-lg">
-              <div className="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1">Analysis</div>
-              <p className="text-sm text-zinc-400">More traffic needed to identify a leader.</p>
+              {(winner?.minimum_sessions_per_variant || winner?.minimum_purchases_per_variant) && (
+                <p className="mt-2 text-xs text-zinc-500">
+                  Minimum gate: {winner.minimum_sessions_per_variant ?? 0} sessions and {winner.minimum_purchases_per_variant ?? 0} purchases per variant, plus statistical significance.
+                </p>
+              )}
             </div>
           )}
         </div>
       )}
 
-      {/* Variants Table */}
       {activeVariants.length === 0 ? (
         <div className="bg-zinc-800 rounded-xl p-6 text-center py-12 border border-zinc-700">
-          <p className="text-zinc-400 mb-4">No variants yet. Create your first variant to start experimenting.</p>
+          <p className="text-zinc-400 mb-4">No variants yet. Generate a landing or create a variant to start experimenting.</p>
           <button onClick={() => setShowCreate(true)} className="btn-primary">+ Create Variant</button>
         </div>
       ) : (
@@ -172,7 +203,7 @@ export function CampaignExperimentsTab({ campaign }: Props) {
             <h4 className="font-medium text-zinc-100">Variants</h4>
             {activeVariants.length >= 2 && (
               <button onClick={startEditTraffic} className="btn-ghost text-xs">
-                {editingTraffic ? '' : 'Manage Traffic'}
+                Manage Traffic
               </button>
             )}
           </div>
@@ -180,35 +211,41 @@ export function CampaignExperimentsTab({ campaign }: Props) {
           {editingTraffic && (
             <div className="mb-4 p-4 bg-zinc-700/50 rounded-lg space-y-3">
               <div className="text-xs text-zinc-400 mb-2">Traffic weights must sum to 100%</div>
-              {activeVariants.map((v: LandingVariant) => (
-                <div key={v.id} className="flex items-center gap-3">
-                  <span className="text-sm text-zinc-300 w-16">{v.variant_key} &middot; {v.name}</span>
+              {activeVariants.map((variant: LandingVariant) => (
+                <div key={variant.id} className="flex items-center gap-3">
+                  <span className="text-sm text-zinc-300 min-w-28">{variant.variant_key} · {variant.name}</span>
                   <input
                     type="number"
                     min="0"
                     max="100"
                     step="5"
                     className="input w-24"
-                    value={trafficWeights[v.id] ?? 0}
-                    onChange={(e) => setTrafficWeights({ ...trafficWeights, [v.id]: Number(e.target.value) })}
+                    value={trafficWeights[variant.id] ?? 0}
+                    onChange={(event) => setTrafficWeights({
+                      ...trafficWeights,
+                      [variant.id]: Number(event.target.value),
+                    })}
                   />
                   <span className="text-xs text-zinc-500">%</span>
                 </div>
               ))}
               <div className="flex items-center gap-3 pt-2">
-                <span className="text-xs text-zinc-400">Total: {Object.values(trafficWeights).reduce((a, b) => a + b, 0)}%</span>
-                {!trafficValid && <span className="text-xs text-red-400">Must equal 100%</span>}
+                <span className="text-xs text-zinc-400">Total: {editedTrafficTotal}%</span>
+                {!trafficDraftValid && <span className="text-xs text-red-400">Must equal 100%</span>}
               </div>
               <div className="flex gap-2 pt-1">
                 <button onClick={() => setEditingTraffic(false)} className="btn-ghost text-xs">Cancel</button>
                 <button
                   onClick={() => updateTrafficMutation.mutate()}
                   className="btn-primary text-xs"
-                  disabled={updateTrafficMutation.isPending || !trafficValid}
+                  disabled={updateTrafficMutation.isPending || !trafficDraftValid}
                 >
                   {updateTrafficMutation.isPending ? 'Saving...' : 'Save Traffic Split'}
                 </button>
               </div>
+              {updateTrafficMutation.isError && (
+                <p className="text-xs text-red-400">{updateTrafficMutation.error.message}</p>
+              )}
             </div>
           )}
 
@@ -227,56 +264,53 @@ export function CampaignExperimentsTab({ campaign }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {activeVariants.map((v: LandingVariant) => {
-                  const p = perfMap[v.id]
-                  const isLeader = leader && leader.variant_id === v.id
+                {activeVariants.map((variant: LandingVariant) => {
+                  const performance = perfMap[variant.id]
+                  const isWinner = winner?.status === 'leader' && winner.variant_id === variant.id
                   return (
-                    <tr key={v.id} className={`border-b border-zinc-700/50 last:border-0 ${isLeader ? 'bg-green-500/5' : ''}`}>
+                    <tr key={variant.id} className={`border-b border-zinc-700/50 last:border-0 ${isWinner ? 'bg-green-500/5' : ''}`}>
                       <td className="py-2 px-3">
                         <div className="flex items-center gap-2">
-                          <span className="text-zinc-100 font-medium">{v.variant_key}</span>
-                          <span className="text-zinc-400">{v.name}</span>
-                          {isLeader && (
+                          <span className="text-zinc-100 font-medium">{variant.variant_key}</span>
+                          <span className="text-zinc-400">{variant.name}</span>
+                          {isWinner && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/20 text-green-400">
-                              Current leader
+                              Winner
                             </span>
                           )}
                         </div>
                       </td>
                       <td className="py-2 px-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${variantStatusColors[v.status] || ''}`}>
-                          {v.status}
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${variantStatusColors[variant.status] || ''}`}>
+                          {variant.status}
                         </span>
                       </td>
-                      <td className="py-2 px-3 text-right text-zinc-300">{v.traffic_weight || 0}%</td>
-                      <td className="py-2 px-3 text-right text-zinc-300">{p ? formatNumber(p.sessions) : '-'}</td>
-                      <td className="py-2 px-3 text-right text-zinc-300">{p ? formatNumber(p.purchases) : '-'}</td>
-                      <td className="py-2 px-3 text-right text-zinc-300">{p ? formatPercent(p.conversion_rate) : '-'}</td>
-                      <td className="py-2 px-3 text-right text-zinc-300">{p ? formatCurrency(p.revenue, campaign.currency) : '-'}</td>
+                      <td className="py-2 px-3 text-right text-zinc-300">{variant.traffic_weight || 0}%</td>
+                      <td className="py-2 px-3 text-right text-zinc-300">{performance ? formatNumber(performance.sessions) : '-'}</td>
+                      <td className="py-2 px-3 text-right text-zinc-300">{performance ? formatNumber(performance.purchases) : '-'}</td>
+                      <td className="py-2 px-3 text-right text-zinc-300">{performance ? formatPercent(performance.conversion_rate) : '-'}</td>
+                      <td className="py-2 px-3 text-right text-zinc-300">{performance ? formatCurrency(performance.revenue, campaign.currency) : '-'}</td>
                       <td className="py-2 px-3 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {v.status === 'ACTIVE' && (
+                          {variant.status === 'ACTIVE' && (
                             <button
-                              onClick={() => pauseMutation.mutate({ variantId: v.id, status: 'PAUSED' })}
+                              onClick={() => pauseMutation.mutate({ variantId: variant.id, status: 'PAUSED' })}
                               className="text-xs px-2 py-1 text-zinc-400 hover:text-amber-400 transition-colors"
-                              title="Pause"
                             >
                               Pause
                             </button>
                           )}
-                          {v.status === 'PAUSED' && (
+                          {variant.status === 'PAUSED' && (
                             <button
-                              onClick={() => pauseMutation.mutate({ variantId: v.id, status: 'ACTIVE' })}
+                              onClick={() => pauseMutation.mutate({ variantId: variant.id, status: 'ACTIVE' })}
                               className="text-xs px-2 py-1 text-zinc-400 hover:text-green-400 transition-colors"
-                              title="Activate"
                             >
                               Activate
                             </button>
                           )}
                           <button
-                            onClick={() => setArchiveConfirmId(v.id)}
+                            onClick={() => setArchiveConfirmId(variant.id)}
                             className="text-xs px-2 py-1 text-zinc-400 hover:text-red-400 transition-colors"
-                            title="Archive"
                           >
                             Archive
                           </button>
@@ -291,9 +325,8 @@ export function CampaignExperimentsTab({ campaign }: Props) {
         </div>
       )}
 
-      {/* Create Variant Modal */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
           <div className="bg-zinc-800 rounded-xl p-6 w-full max-w-md border border-zinc-700">
             <h3 className="text-lg font-semibold text-zinc-100 mb-4">Create Variant</h3>
             <div className="space-y-4">
@@ -301,9 +334,9 @@ export function CampaignExperimentsTab({ campaign }: Props) {
                 <label className="block text-sm font-medium text-zinc-300 mb-1">Variant Name</label>
                 <input
                   className="input"
-                  placeholder="e.g. Pet Hair Hook B"
+                  placeholder="e.g. Benefit-led hero"
                   value={createForm.name}
-                  onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                  onChange={(event) => setCreateForm({ ...createForm, name: event.target.value })}
                 />
               </div>
               {variants.length > 0 && (
@@ -312,11 +345,14 @@ export function CampaignExperimentsTab({ campaign }: Props) {
                   <select
                     className="input"
                     value={createForm.clone_from_variant_id || ''}
-                    onChange={(e) => setCreateForm({ ...createForm, clone_from_variant_id: e.target.value || null })}
+                    onChange={(event) => setCreateForm({
+                      ...createForm,
+                      clone_from_variant_id: event.target.value || null,
+                    })}
                   >
                     <option value="">None (create empty)</option>
-                    {variants.map((v: LandingVariant) => (
-                      <option key={v.id} value={v.id}>{v.variant_key} &middot; {v.name}</option>
+                    {variants.map((variant: LandingVariant) => (
+                      <option key={variant.id} value={variant.id}>{variant.variant_key} · {variant.name}</option>
                     ))}
                   </select>
                 </div>
@@ -324,11 +360,17 @@ export function CampaignExperimentsTab({ campaign }: Props) {
             </div>
             {createMutation.isError && (
               <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400">
-                {createMutation.error?.message || 'Failed to create variant'}
+                {createMutation.error.message || 'Failed to create variant'}
               </div>
             )}
             <div className="flex justify-end gap-2 mt-6">
-              <button onClick={() => { setShowCreate(false); setCreateForm({ name: '', clone_from_variant_id: null }) }} className="btn-ghost">
+              <button
+                onClick={() => {
+                  setShowCreate(false)
+                  setCreateForm({ name: '', clone_from_variant_id: null })
+                }}
+                className="btn-ghost"
+              >
                 Cancel
               </button>
               <button
@@ -343,9 +385,8 @@ export function CampaignExperimentsTab({ campaign }: Props) {
         </div>
       )}
 
-      {/* Archive Confirm */}
       {archiveConfirmId && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
           <div className="bg-zinc-800 rounded-xl p-6 w-full max-w-sm border border-zinc-700">
             <h3 className="text-lg font-semibold text-zinc-100 mb-2">Archive this variant?</h3>
             <p className="text-sm text-zinc-400 mb-6">Historical performance data will remain available.</p>

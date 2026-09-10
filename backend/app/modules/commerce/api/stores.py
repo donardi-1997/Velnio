@@ -15,6 +15,7 @@ from app.core.exceptions import ForbiddenException
 from app.db.session import get_db
 from app.models.user import User
 from app.models.workspace import MemberRole, Workspace, WorkspaceMember
+from app.modules.commerce.application.order_webhooks import ShopifyOrderWebhookService
 from app.modules.commerce.application.shopify_connection import ShopifyConnectionService
 from app.modules.commerce.application.stores import StoreService
 from app.modules.commerce.infrastructure.repository import StoreRepository
@@ -29,6 +30,12 @@ def get_store_service(db: AsyncSession = Depends(get_db)) -> StoreService:
 
 def get_shopify_connection_service(db: AsyncSession = Depends(get_db)) -> ShopifyConnectionService:
     return ShopifyConnectionService(db)
+
+
+def get_shopify_order_webhook_service(
+    db: AsyncSession = Depends(get_db),
+) -> ShopifyOrderWebhookService:
+    return ShopifyOrderWebhookService(db)
 
 
 def require_store_admin(
@@ -68,6 +75,20 @@ async def shopify_callback(
         url=f"{settings.FRONTEND_URL.rstrip('/')}/stores?shopify=connected",
         status_code=302,
     )
+
+
+@router.post("/shopify/webhooks/orders-create", include_in_schema=False)
+async def shopify_orders_create_webhook(
+    request: Request,
+    service: ShopifyOrderWebhookService = Depends(get_shopify_order_webhook_service),
+):
+    accepted = await service.ingest(
+        await request.body(),
+        request.headers.get("x-shopify-hmac-sha256", ""),
+        request.headers.get("x-shopify-shop-domain", ""),
+        request.headers.get("x-shopify-topic", ""),
+    )
+    return {"status": "ok", "events_accepted": accepted}
 
 
 @router.post("/mock-connect", response_model=StoreResponse, status_code=201)
