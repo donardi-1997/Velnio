@@ -54,7 +54,14 @@ class RealShopifyProvider(ShopifyProvider):
             raise BadGatewayException("Shopify returned an invalid response")
         return data
 
-    async def _request_json(self, method: str, url: str, **kwargs) -> Dict[str, Any]:
+    async def _request_json(
+        self,
+        method: str,
+        url: str,
+        *,
+        reauthorize_on_401: bool = False,
+        **kwargs,
+    ) -> Dict[str, Any]:
         try:
             async with httpx.AsyncClient(timeout=settings.SHOPIFY_REQUEST_TIMEOUT_SECONDS) as client:
                 response = await client.request(method, url, **kwargs)
@@ -63,6 +70,8 @@ class RealShopifyProvider(ShopifyProvider):
         except httpx.TimeoutException as exc:
             raise BadGatewayException("Shopify request timed out; try again") from exc
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 401 and reauthorize_on_401:
+                raise BadRequestException("Shopify authorization expired; reconnect your store") from exc
             if exc.response.status_code in {401, 403}:
                 raise BadGatewayException("Shopify authorization failed; reconnect your store") from exc
             raise BadGatewayException("Shopify request failed; try again") from exc
@@ -165,6 +174,7 @@ class RealShopifyProvider(ShopifyProvider):
         return await self._request_json(
             "POST",
             f"https://{shop}/admin/oauth/access_token",
+            reauthorize_on_401=True,
             headers={"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"},
             data={
                 "client_id": settings.SHOPIFY_API_KEY,
@@ -202,6 +212,64 @@ class RealShopifyProvider(ShopifyProvider):
             "country_code": billing.get("countryCodeV2", "US") if isinstance(billing, dict) else "US",
         }
 
+    async def _publish_product_to_online_store(
+        self,
+        access_token: str,
+        shop_domain: str,
+        product_id: str,
+    ) -> None:
+        publications_data = await self._graphql(
+            access_token,
+            shop_domain,
+            """
+            query VelnioPublications {
+              publications(first: 50) { nodes { id name autoPublish } }
+            }
+            """,
+        )
+        connection = publications_data.get("publications")
+        nodes = connection.get("nodes", []) if isinstance(connection, dict) else []
+        online_store = next(
+            (
+                node
+                for node in nodes
+                if isinstance(node, dict) and str(node.get("name", "")).strip().lower() == "online store"
+            ),
+            None,
+        )
+        if online_store is None or not online_store.get("id"):
+            raise BadRequestException("Shopify Online Store sales channel is required to publish products")
+
+        status_data = await self._graphql(
+            access_token,
+            shop_domain,
+            """
+            query VelnioPublicationStatus($id: ID!, $publicationId: ID!) {
+              node(id: $id) {
+                ... on Product { publishedOnPublication(publicationId: $publicationId) }
+              }
+            }
+            """,
+            {"id": product_id, "publicationId": online_store["id"]},
+        )
+        node = status_data.get("node")
+        if isinstance(node, dict) and node.get("publishedOnPublication") is True:
+            return
+
+        publish_data = await self._graphql(
+            access_token,
+            shop_domain,
+            """
+            mutation VelnioPublishProduct($id: ID!, $input: [PublicationInput!]!) {
+              publishablePublish(id: $id, input: $input) {
+                userErrors { field message }
+              }
+            }
+            """,
+            {"id": product_id, "input": [{"publicationId": online_store["id"]}]},
+        )
+        self._require_mutation_result(publish_data, "publishablePublish", "publication")
+
     async def create_product(
         self,
         access_token: str,
@@ -220,10 +288,7 @@ class RealShopifyProvider(ShopifyProvider):
             "tags": tags,
         }
         media = [
-            {
-                "originalSource": image["src"],
-                "mediaContentType": "IMAGE",
-            }
+            {"originalSource": image["src"], "mediaContentType": "IMAGE"}
             for image in product_data.get("images", [])
             if isinstance(image, dict) and image.get("src")
         ]
@@ -233,12 +298,7 @@ class RealShopifyProvider(ShopifyProvider):
             """
             mutation VelnioCreateProduct($product: ProductCreateInput!, $media: [CreateMediaInput!]) {
               productCreate(product: $product, media: $media) {
-                product {
-                  id
-                  title
-                  status
-                  variants(first: 1) { nodes { id } }
-                }
+                product { id title status variants(first: 1) { nodes { id } } }
                 userErrors { field message }
               }
             }
@@ -275,6 +335,8 @@ class RealShopifyProvider(ShopifyProvider):
                 {"productId": product["id"], "variants": [variant_input]},
             )
             self._require_mutation_result(variant_data, "productVariantsBulkUpdate", "variant")
+
+        await self._publish_product_to_online_store(access_token, shop_domain, str(product["id"]))
         return product
 
     async def create_page(
@@ -316,6 +378,7 @@ class RealShopifyProvider(ShopifyProvider):
             "vendor": "Velnio",
             "product_type": "General",
             "status": "ACTIVE",
+            "tags": ["velnio", f"velnio-product:{product.id}"],
         }
         if product.images:
             product_data["images"] = [
@@ -346,11 +409,9 @@ class RealShopifyProvider(ShopifyProvider):
                 parts.append(f"<p><strong>{offer.bonus_text}</strong></p>")
             if offer.urgency_text:
                 parts.append(f"<p><em>{offer.urgency_text}</em></p>")
-        tags = ["velnio"]
+        tags = ["velnio", f"velnio-campaign:{campaign.id}"]
         if campaign.target_country:
             tags.append(f"market:{campaign.target_country}")
-        if campaign.id:
-            tags.append(f"campaign:{str(campaign.id)[:8]}")
         product_data: Dict[str, Any] = {
             "title": product_title,
             "body_html": "\n".join(parts) or (product.description or ""),
