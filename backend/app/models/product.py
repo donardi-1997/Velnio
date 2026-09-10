@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, ForeignKey, Text, Enum as SAEnum, Float, Integer, Boolean
+from sqlalchemy import Column, String, ForeignKey, Text, Enum as SAEnum, Float, Integer, Boolean, Index, text
 from sqlalchemy.dialects.postgresql import UUID, JSON
 from sqlalchemy.orm import relationship
 from app.db.base import Base
@@ -101,3 +101,16 @@ class ProductImage(UUIDMixin, TimestampMixin, Base):
 
     product = relationship("Product", back_populates="images")
     campaign = relationship("Campaign", back_populates="images")
+
+    __table_args__ = (
+        Index(
+            "uq_product_image_external",
+            "product_id",
+            "external_source",
+            "external_file_id",
+            unique=True,
+            postgresql_where=text(
+                "external_source IS NOT NULL AND external_file_id IS NOT NULL"
+            ),
+        ),
+    )

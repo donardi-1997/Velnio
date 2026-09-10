@@ -24,10 +24,14 @@ class LandingPage(UUIDMixin, TimestampMixin, Base):
     slug = Column(String(512), nullable=False, default="")
     status = Column(SAEnum(LandingStatus, name="landing_status", create_constraint=True), nullable=False, default=LandingStatus.DRAFT)
     version = Column(Integer, nullable=False, default=1)
-    variant_id = Column(UUID(as_uuid=True), ForeignKey("landing_variants.id", ondelete="SET NULL"), nullable=True, index=True)
 
     campaign = relationship("Campaign", back_populates="landing_page")
     sections = relationship("LandingSection", back_populates="landing_page", cascade="all, delete-orphan", order_by="LandingSection.position", lazy="selectin")
+    variants = relationship(
+        "LandingVariant",
+        back_populates="landing_page",
+        foreign_keys="LandingVariant.landing_page_id",
+    )
 
 
 class LandingSection(UUIDMixin, TimestampMixin, Base):

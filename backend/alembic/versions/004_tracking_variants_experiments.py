@@ -17,8 +17,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    conn = op.get_bind()
-
     # ALTER campaigns: add tracking_key
     op.add_column('campaigns', sa.Column('tracking_key', sa.String(64), nullable=True, unique=True, index=True))
 
@@ -29,10 +27,9 @@ def upgrade() -> None:
     # Drop the unique constraint on offers.campaign_id
     op.execute("ALTER TABLE offers DROP CONSTRAINT IF EXISTS offers_campaign_id_key")
 
-    # ALTER landing_pages: add variant_id
-    op.add_column('landing_pages', sa.Column('variant_id', UUID(as_uuid=True), sa.ForeignKey('landing_variants.id', ondelete='SET NULL'), nullable=True, index=True))
-
-    # CREATE landing_variants table
+    # CREATE landing_variants before adding the optional reverse pointer from
+    # landing_pages. The original order attempted to create a foreign key to a
+    # table that did not exist yet on a fresh PostgreSQL database.
     op.create_table(
         'landing_variants',
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
@@ -48,6 +45,20 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.UniqueConstraint('campaign_id', 'variant_key', name='uq_variant_key_per_campaign'),
+    )
+
+    # Historical compatibility: revision 004 introduced this reverse pointer.
+    # Revision 007 removes it after consolidating ownership on
+    # landing_variants.landing_page_id.
+    op.add_column(
+        'landing_pages',
+        sa.Column(
+            'variant_id',
+            UUID(as_uuid=True),
+            sa.ForeignKey('landing_variants.id', ondelete='SET NULL'),
+            nullable=True,
+            index=True,
+        ),
     )
 
     # CREATE tracking_events table
@@ -98,8 +109,11 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table('campaign_performance_insights')
     op.drop_table('tracking_events')
+
+    # Remove the reverse pointer before dropping landing_variants so PostgreSQL
+    # never has to drop a table that is still referenced by landing_pages.
+    op.drop_column('landing_pages', 'variant_id')
     op.drop_table('landing_variants')
 
-    op.drop_column('landing_pages', 'variant_id')
     op.drop_column('offers', 'status')
     op.drop_column('campaigns', 'tracking_key')
