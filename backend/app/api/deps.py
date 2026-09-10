@@ -1,14 +1,16 @@
 from typing import AsyncGenerator
 from uuid import UUID
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
-from app.db.session import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.exceptions import ForbiddenException, UnauthorizedException
 from app.core.security import decode_token
-from app.core.exceptions import UnauthorizedException, ForbiddenException
+from app.db.session import get_db
 from app.models.user import User
-from app.models.workspace import Workspace, WorkspaceMember, MemberRole
+from app.models.workspace import MemberRole, Workspace, WorkspaceMember
 
 
 security = HTTPBearer(auto_error=False)
@@ -20,13 +22,18 @@ async def get_current_user(
 ) -> User:
     if not credentials:
         raise UnauthorizedException()
+
     payload = decode_token(credentials.credentials)
     if not payload or payload.get("type") != "access":
         raise UnauthorizedException()
+
     user_id = payload.get("sub")
-    if not user_id:
+    try:
+        parsed_user_id = UUID(user_id)
+    except (TypeError, ValueError):
         raise UnauthorizedException()
-    result = await db.execute(select(User).where(User.id == UUID(user_id)))
+
+    result = await db.execute(select(User).where(User.id == parsed_user_id))
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
         raise UnauthorizedException()
