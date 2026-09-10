@@ -34,7 +34,8 @@ def upgrade() -> None:
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
 
-    # CREATE product_source_documents table
+    # CREATE product_source_documents table using the original revision-005
+    # shape. Revision 007 migrates the extraction fields to the current model.
     op.create_table(
         'product_source_documents',
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
@@ -54,21 +55,25 @@ def upgrade() -> None:
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
 
-    # ALTER product_images: add Google Drive fields
+    # ALTER product_images: add only the Google Drive-specific fields.
+    # storage_key and purpose already belong to revision 003 and must not be
+    # added a second time here.
     op.add_column('product_images', sa.Column('external_source', sa.String(50), nullable=True))
     op.add_column('product_images', sa.Column('external_file_id', sa.String(255), nullable=True))
     op.add_column('product_images', sa.Column('external_file_name', sa.String(512), nullable=True))
-    op.add_column('product_images', sa.Column('storage_key', sa.String(512), nullable=True))
-    op.add_column('product_images', sa.Column('purpose', sa.String(50), nullable=False, server_default='ORIGINAL'))
 
     # Add unique constraint for idempotent imports
-    op.create_index('uq_product_image_external', 'product_images', ['product_id', 'external_source', 'external_file_id'], unique=True, postgresql_where='external_source IS NOT NULL AND external_file_id IS NOT NULL')
+    op.create_index(
+        'uq_product_image_external',
+        'product_images',
+        ['product_id', 'external_source', 'external_file_id'],
+        unique=True,
+        postgresql_where='external_source IS NOT NULL AND external_file_id IS NOT NULL',
+    )
 
 
 def downgrade() -> None:
     op.drop_index('uq_product_image_external', table_name='product_images')
-    op.drop_column('product_images', 'purpose')
-    op.drop_column('product_images', 'storage_key')
     op.drop_column('product_images', 'external_file_name')
     op.drop_column('product_images', 'external_file_id')
     op.drop_column('product_images', 'external_source')
