@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from app.core.encryption import encrypt_value
 from app.core.exceptions import NotFoundException
 from app.models.store import Store, StoreStatus
 from app.modules.billing.application.entitlements import EntitlementService
@@ -25,7 +26,7 @@ class StoreService:
             country=data.country,
             currency=data.currency,
             status=StoreStatus.CONNECTED,
-            access_token_encrypted="mock_token",
+            access_token_encrypted=encrypt_value("mock_token"),
         )
         return await self.repository.add(store)
 
@@ -35,4 +36,8 @@ class StoreService:
             raise NotFoundException("Store")
         store.status = StoreStatus.DISCONNECTED
         store.access_token_encrypted = None
+        store.refresh_token_encrypted = None
+        store.token_expires_at = None
+        store.refresh_token_expires_at = None
+        store.granted_scopes = None
         return await self.repository.flush_and_refresh(store)
