@@ -1,4 +1,7 @@
 from app.api.routes import campaigns as legacy_campaigns
+from app.api.routes import demo as legacy_demo
+from app.api.routes import variants as legacy_variants
+from app.api.routes import visual_assets as legacy_visual_assets
 from app.modules.campaigns.api.router import router
 
 
@@ -33,12 +36,33 @@ def test_campaign_api_preserves_expected_routes():
         ("GET", "/{campaign_id}/publish-readiness"),
         ("POST", "/{campaign_id}/publish"),
         ("POST", "/{campaign_id}/generate-brief"),
+        ("GET", "/{campaign_id}/visual-direction"),
+        ("POST", "/{campaign_id}/visual-direction/generate"),
+        ("PATCH", "/visual-directions/{vd_id}"),
+        ("POST", "/{campaign_id}/assets/generate"),
+        ("POST", "/{campaign_id}/assets/{image_id}/select"),
+        ("GET", "/{campaign_id}/variants"),
+        ("POST", "/{campaign_id}/variants"),
+        ("PATCH", "/{campaign_id}/variants/traffic"),
+        ("PATCH", "/{campaign_id}/variants/{variant_id}"),
+        ("DELETE", "/{campaign_id}/variants/{variant_id}"),
+        ("POST", "/{campaign_id}/demo/events"),
+        ("DELETE", "/{campaign_id}/demo/events"),
     }
     assert expected <= contract
 
 
 def test_legacy_campaign_router_is_modular_router():
     assert legacy_campaigns.router is router
+
+
+def test_legacy_feature_shims_point_to_modular_routers():
+    modular_routers = {id(route) for route in [
+        legacy_demo.router,
+        legacy_variants.router,
+        legacy_visual_assets.router,
+    ]}
+    assert len(modular_routers) == 3
 
 
 def test_campaign_routes_are_unique():
