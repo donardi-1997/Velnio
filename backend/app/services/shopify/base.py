@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 
 class ShopifyProvider(ABC):
@@ -12,15 +12,25 @@ class ShopifyProvider(ABC):
         pass
 
     @abstractmethod
-    async def get_shop(self, access_token: str) -> Dict[str, Any]:
+    async def get_shop(self, access_token: str, shop_domain: str = "") -> Dict[str, Any]:
         pass
 
     @abstractmethod
-    async def create_product(self, access_token: str, product_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_product(
+        self,
+        access_token: str,
+        shop_domain: str,
+        product_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
         pass
 
     @abstractmethod
-    async def create_page(self, access_token: str, page_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_page(
+        self,
+        access_token: str,
+        shop_domain: str,
+        page_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
         pass
 
     @abstractmethod
