@@ -1,6 +1,8 @@
+import math
+from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select, update as sa_update
+from sqlalchemy import func, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -30,6 +32,114 @@ class CampaignVisualAssetService:
         if not campaign:
             raise NotFoundException("Campaign")
         return campaign
+
+    async def _get_generation_context(self, campaign: Campaign):
+        result = await self.db.execute(select(Product).where(Product.id == campaign.product_id))
+        product = result.scalar_one_or_none()
+        if not product:
+            raise NotFoundException("Product")
+
+        result = await self.db.execute(
+            select(SellingAngle).where(
+                SellingAngle.campaign_id == campaign.id,
+                SellingAngle.selected == True,
+            )
+        )
+        angle = result.scalar_one_or_none()
+
+        result = await self.db.execute(select(Offer).where(Offer.campaign_id == campaign.id))
+        offer = result.scalar_one_or_none()
+
+        result = await self.db.execute(
+            select(CampaignVisualDirection).where(CampaignVisualDirection.campaign_id == campaign.id)
+        )
+        direction = result.scalar_one_or_none()
+
+        visual_direction = None
+        if direction:
+            visual_direction = VisualDirection(
+                visual_style=direction.visual_style,
+                tone=direction.tone,
+                color_notes=direction.color_notes,
+                background_style=direction.background_style or "",
+                photography_style=direction.photography_style or "",
+                audience_context=direction.audience_context or "",
+                additional_instructions=direction.additional_instructions or "",
+            )
+
+        return product, angle, offer, visual_direction
+
+    async def _next_asset_position(self, campaign_id: UUID) -> int:
+        result = await self.db.execute(
+            select(func.max(ProductImage.position)).where(ProductImage.campaign_id == campaign_id)
+        )
+        current_max = result.scalar_one_or_none()
+        return (current_max if current_max is not None else -1) + 1
+
+    @staticmethod
+    def _with_regeneration_instructions(
+        visual_direction: Optional[VisualDirection], instructions: Optional[str]
+    ) -> VisualDirection:
+        direction = visual_direction or VisualDirection()
+        existing = (direction.additional_instructions or "").strip()
+        variation = (
+            "Create a clearly distinct alternative composition for this asset while preserving "
+            "the campaign message, product identity, and requested asset purpose."
+        )
+        if instructions:
+            variation += f" Regeneration request: {instructions.strip()}"
+        combined = " ".join(part for part in (existing, variation) if part)
+        return VisualDirection(
+            visual_style=direction.visual_style,
+            tone=direction.tone,
+            color_notes=direction.color_notes,
+            background_style=direction.background_style,
+            photography_style=direction.photography_style,
+            audience_context=direction.audience_context,
+            additional_instructions=combined,
+        )
+
+    async def _create_generated_asset(
+        self,
+        *,
+        product: Product,
+        campaign: Campaign,
+        angle,
+        offer,
+        visual_direction: Optional[VisualDirection],
+        purpose: ImagePurpose,
+        position: int,
+    ) -> ProductImage:
+        provider = get_image_provider()
+        generation = await provider.generate_campaign_asset(
+            product,
+            campaign,
+            angle,
+            offer,
+            visual_direction,
+            purpose.value,
+        )
+        image_url = generation.get("image_url")
+        if not image_url:
+            raise ValueError("Image provider returned no image_url")
+
+        image = ProductImage(
+            product_id=product.id,
+            campaign_id=campaign.id,
+            image_url=image_url,
+            source_type=ImageSourceType.AI_GENERATED.value,
+            purpose=purpose.value,
+            prompt=generation.get("prompt"),
+            generation_provider=generation.get("provider", settings.IMAGE_PROVIDER),
+            generation_model=generation.get("model"),
+            width=generation.get("width"),
+            height=generation.get("height"),
+            generated_by_ai="true",
+            selected=False,
+            position=position,
+        )
+        self.db.add(image)
+        return image
 
     async def generate_visual_direction(self, campaign_id: UUID, workspace_id: UUID):
         campaign = await self._get_campaign(campaign_id, workspace_id)
@@ -113,85 +223,68 @@ class CampaignVisualAssetService:
 
     async def generate_launch_pack(self, campaign_id: UUID, workspace_id: UUID) -> dict:
         campaign = await self._get_campaign(campaign_id, workspace_id)
-        result = await self.db.execute(select(Product).where(Product.id == campaign.product_id))
-        product = result.scalar_one_or_none()
-        if not product:
-            raise NotFoundException("Product")
-
-        result = await self.db.execute(
-            select(SellingAngle).where(
-                SellingAngle.campaign_id == campaign_id,
-                SellingAngle.selected == True,
-            )
-        )
-        angle = result.scalar_one_or_none()
-        result = await self.db.execute(select(Offer).where(Offer.campaign_id == campaign_id))
-        offer = result.scalar_one_or_none()
-        result = await self.db.execute(
-            select(CampaignVisualDirection).where(CampaignVisualDirection.campaign_id == campaign_id)
-        )
-        direction = result.scalar_one_or_none()
-
-        visual_direction = None
-        if direction:
-            visual_direction = VisualDirection(
-                visual_style=direction.visual_style,
-                tone=direction.tone,
-                color_notes=direction.color_notes,
-                background_style=direction.background_style or "",
-                photography_style=direction.photography_style or "",
-                audience_context=direction.audience_context or "",
-                additional_instructions=direction.additional_instructions or "",
-            )
+        product, angle, offer, visual_direction = await self._get_generation_context(campaign)
 
         result = await self.db.execute(select(CreditWallet).where(CreditWallet.workspace_id == workspace_id))
         wallet = result.scalar_one_or_none()
         if not wallet or wallet.balance < settings.PLAN_LAUNCH_PACK_COST:
             raise InsufficientCreditsException()
 
+        purposes = [
+            (ImagePurpose.HERO, 1),
+            (ImagePurpose.LIFESTYLE, 2),
+            (ImagePurpose.PROBLEM, 1),
+            (ImagePurpose.SOLUTION, 1),
+            (ImagePurpose.BENEFIT, 2),
+            (ImagePurpose.COMPARISON, 1),
+        ]
+        total_requested = sum(count for _, count in purposes)
+        position = await self._next_asset_position(campaign_id)
+        created_images = []
+        failures = []
+
         try:
-            provider = get_image_provider()
-            purposes = [
-                (ImagePurpose.HERO, 1),
-                (ImagePurpose.LIFESTYLE, 2),
-                (ImagePurpose.PROBLEM, 1),
-                (ImagePurpose.SOLUTION, 1),
-                (ImagePurpose.BENEFIT, 2),
-                (ImagePurpose.COMPARISON, 1),
-            ]
-            created_images = []
             for purpose, count in purposes:
                 for _ in range(count):
                     try:
-                        generation = await provider.generate_campaign_asset(
-                            product, campaign, angle, offer, visual_direction, purpose.value
-                        )
-                        image = ProductImage(
-                            product_id=product.id,
-                            campaign_id=campaign_id,
-                            image_url=generation.get("image_url", ""),
-                            source_type=ImageSourceType.AI_GENERATED,
+                        image = await self._create_generated_asset(
+                            product=product,
+                            campaign=campaign,
+                            angle=angle,
+                            offer=offer,
+                            visual_direction=visual_direction,
                             purpose=purpose,
-                            prompt=generation.get("prompt"),
-                            generation_provider=generation.get("provider", settings.IMAGE_PROVIDER),
-                            generation_model=generation.get("model"),
-                            width=generation.get("width"),
-                            height=generation.get("height"),
-                            position=len(created_images),
+                            position=position + len(created_images),
                         )
-                        self.db.add(image)
                         created_images.append(image)
                     except Exception as exc:
                         logger.error(f"Failed to generate {purpose.value} image: {exc}")
+                        failures.append(purpose.value)
 
-            wallet.balance -= settings.PLAN_LAUNCH_PACK_COST
+            if not created_images:
+                raise BadRequestException("Launch pack generation failed: no assets were generated.")
+
+            credits_charged = min(
+                settings.PLAN_LAUNCH_PACK_COST,
+                math.ceil(
+                    settings.PLAN_LAUNCH_PACK_COST * len(created_images) / total_requested
+                ),
+            )
+            if wallet.balance < credits_charged:
+                raise InsufficientCreditsException()
+
+            wallet.balance -= credits_charged
             self.db.add(
                 CreditTransaction(
                     workspace_id=workspace_id,
                     wallet_id=wallet.id,
-                    amount=-settings.PLAN_LAUNCH_PACK_COST,
+                    amount=-credits_charged,
                     transaction_type=TransactionType.USAGE,
-                    description="Generate Launch Pack",
+                    description=(
+                        "Generate Launch Pack"
+                        if len(created_images) == total_requested
+                        else f"Generate partial Launch Pack ({len(created_images)}/{total_requested})"
+                    ),
                     reference_type="campaign_asset",
                     reference_id=campaign_id,
                 )
@@ -200,18 +293,98 @@ class CampaignVisualAssetService:
             for image in created_images:
                 await self.db.refresh(image)
             return {
-                "status": "generated",
+                "status": "generated" if not failures else "partially_generated",
                 "count": len(created_images),
+                "failed_count": len(failures),
+                "failed_purposes": failures,
+                "credits_charged": credits_charged,
                 "images": [
                     {"id": str(image.id), "purpose": image.purpose, "url": image.image_url}
                     for image in created_images
                 ],
             }
-        except InsufficientCreditsException:
+        except (InsufficientCreditsException, BadRequestException):
             raise
         except Exception as exc:
             logger.error(f"Launch pack generation failed: {exc}")
             raise BadRequestException("Launch pack generation failed.")
+
+    async def regenerate_asset(
+        self,
+        campaign_id: UUID,
+        image_id: UUID,
+        workspace_id: UUID,
+        instructions: Optional[str] = None,
+    ) -> dict:
+        campaign = await self._get_campaign(campaign_id, workspace_id)
+        result = await self.db.execute(
+            select(ProductImage).where(
+                ProductImage.id == image_id,
+                ProductImage.campaign_id == campaign_id,
+            )
+        )
+        source_image = result.scalar_one_or_none()
+        if not source_image:
+            raise NotFoundException("Image")
+
+        try:
+            purpose = ImagePurpose(source_image.purpose)
+        except ValueError as exc:
+            raise BadRequestException("Asset purpose cannot be regenerated.") from exc
+
+        result = await self.db.execute(select(CreditWallet).where(CreditWallet.workspace_id == workspace_id))
+        wallet = result.scalar_one_or_none()
+        if not wallet or wallet.balance < settings.PLAN_IMAGE_COST:
+            raise InsufficientCreditsException()
+
+        product, angle, offer, visual_direction = await self._get_generation_context(campaign)
+        regeneration_direction = self._with_regeneration_instructions(
+            visual_direction, instructions
+        )
+        position = await self._next_asset_position(campaign_id)
+
+        try:
+            image = await self._create_generated_asset(
+                product=product,
+                campaign=campaign,
+                angle=angle,
+                offer=offer,
+                visual_direction=regeneration_direction,
+                purpose=purpose,
+                position=position,
+            )
+
+            wallet.balance -= settings.PLAN_IMAGE_COST
+            self.db.add(
+                CreditTransaction(
+                    workspace_id=workspace_id,
+                    wallet_id=wallet.id,
+                    amount=-settings.PLAN_IMAGE_COST,
+                    transaction_type=TransactionType.USAGE,
+                    description=f"Regenerate {purpose.value} campaign asset",
+                    reference_type="campaign_asset_regeneration",
+                    reference_id=image_id,
+                )
+            )
+            await self.db.flush()
+            await self.db.refresh(image)
+            return {
+                "status": "regenerated",
+                "source_image_id": str(source_image.id),
+                "credits_charged": settings.PLAN_IMAGE_COST,
+                "image": {
+                    "id": str(image.id),
+                    "purpose": image.purpose,
+                    "url": image.image_url,
+                    "selected": image.selected,
+                    "prompt": image.prompt,
+                },
+            }
+        except InsufficientCreditsException:
+            raise
+        except Exception as exc:
+            logger.error(f"Asset regeneration failed for image {image_id}: {exc}")
+            raise BadRequestException("Asset regeneration failed.")
 
     async def select_asset(self, campaign_id: UUID, image_id: UUID, purpose: str, workspace_id: UUID) -> dict:
         await self._get_campaign(campaign_id, workspace_id)
