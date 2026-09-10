@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import shopify, stores
+from app.modules.commerce.api import shopify, stores
 
 router = APIRouter()
 router.include_router(stores.router, prefix="/stores", tags=["stores"])
