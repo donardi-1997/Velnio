@@ -178,7 +178,9 @@ class CampaignVariantService:
                 raise BadRequestException("Invalid status")
             variant.status = data.status
         if data.traffic_weight is not None:
-            variant.traffic_weight = data.traffic_weight
+            raise BadRequestException(
+                "Use the traffic distribution endpoint to update variant weights"
+            )
         if data.selling_angle_id is not None:
             variant.selling_angle_id = data.selling_angle_id
         if data.offer_id is not None:
