@@ -13,6 +13,7 @@ from app.models.offer import Offer
 from app.models.product import Product, ProductImage
 from app.models.store import Store, StoreStatus
 from app.models.visual_direction import CampaignVisualDirection
+from app.modules.commerce.application.shopify_connection import ShopifyConnectionService
 from app.services.shopify import get_shopify_provider
 
 logger = get_logger(__name__)
@@ -21,6 +22,7 @@ logger = get_logger(__name__)
 class CampaignPublishingService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
+        self.shopify_connection = ShopifyConnectionService(db)
 
     async def _get_campaign(self, campaign_id: UUID, workspace_id: UUID) -> Campaign:
         result = await self.db.execute(
@@ -133,6 +135,8 @@ class CampaignPublishingService:
         store = await self._get_store(campaign.store_id, workspace_id)
         if campaign.store_id and store is None:
             raise NotFoundException("Store")
+        if store is not None:
+            store = await self.shopify_connection.ensure_valid_credentials(store)
 
         result = await self.db.execute(
             select(SellingAngle).where(

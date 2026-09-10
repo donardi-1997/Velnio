@@ -17,6 +17,8 @@ def test_commerce_api_preserves_expected_routes():
     contract = _route_contract(router)
     expected = {
         ("GET", "/stores"),
+        ("POST", "/stores/shopify/connect"),
+        ("GET", "/stores/shopify/callback"),
         ("POST", "/stores/mock-connect"),
         ("POST", "/stores/{store_id}/disconnect"),
         ("POST", "/products/{product_id}/publish"),
@@ -29,6 +31,8 @@ def test_legacy_commerce_routers_are_modular_routers():
     assert legacy_stores.router.routes[0].path == ""
     assert legacy_shopify.router.routes[0].path == "/{product_id}/publish"
     assert "/stores" in modular_by_path
+    assert "/stores/shopify/connect" in modular_by_path
+    assert "/stores/shopify/callback" in modular_by_path
     assert "/products/{product_id}/publish" in modular_by_path
 
 

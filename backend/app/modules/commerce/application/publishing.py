@@ -7,6 +7,7 @@ from app.core.exceptions import AppException, BadGatewayException, NotFoundExcep
 from app.core.logging import get_logger
 from app.models.product import Product, ProductStatus
 from app.models.store import Store
+from app.modules.commerce.application.shopify_connection import ShopifyConnectionService
 from app.services.shopify import get_shopify_provider
 
 logger = get_logger(__name__)
@@ -15,6 +16,7 @@ logger = get_logger(__name__)
 class ProductPublishingService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
+        self.shopify_connection = ShopifyConnectionService(db)
 
     async def publish(self, product_id: UUID, workspace_id: UUID) -> dict:
         result = await self.db.execute(
@@ -43,6 +45,7 @@ class ProductPublishingService:
             store = store_result.scalar_one_or_none()
             if store is None:
                 raise NotFoundException("Store")
+            store = await self.shopify_connection.ensure_valid_credentials(store)
 
         try:
             publish_result = await get_shopify_provider().publish_product(product, store)
