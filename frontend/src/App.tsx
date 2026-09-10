@@ -5,6 +5,7 @@ import { AuthLayout } from './layouts/AuthLayout'
 import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { OnboardingPage } from './pages/OnboardingPage'
 import { ProductsPage } from './pages/ProductsPage'
 import { ProductDetailPage } from './pages/ProductDetailPage'
 import { NewProductPage } from './pages/NewProductPage'
@@ -61,6 +62,16 @@ export default function App() {
             <ProtectedRoute>
               <MainLayout>
                 <DashboardPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/onboarding"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <OnboardingPage />
               </MainLayout>
             </ProtectedRoute>
           }
