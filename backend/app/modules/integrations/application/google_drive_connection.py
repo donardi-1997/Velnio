@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 import secrets
 from uuid import UUID
 
-from jose import JWTError, jwt
+import jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -71,7 +71,7 @@ class GoogleDriveConnectionService:
     async def validate_oauth_state(self, state: str) -> tuple[UUID, UUID]:
         try:
             payload = jwt.decode(state, settings.JWT_SECRET, algorithms=[ALGORITHM])
-        except JWTError as exc:
+        except jwt.PyJWTError as exc:
             raise BadRequestException("Invalid or expired Google Drive OAuth state") from exc
 
         if payload.get("type") != OAUTH_STATE_TYPE:
