@@ -12,7 +12,10 @@ from app.modules.campaigns.api import (
     visual_assets,
 )
 
-router = APIRouter()
+# This router owns the /campaigns prefix itself so route modules may safely
+# declare collection operations at path "" without FastAPI rejecting the
+# intermediate router composition.
+router = APIRouter(prefix="/campaigns")
 router.include_router(campaigns.router)
 router.include_router(angles.router)
 router.include_router(offers.router)
