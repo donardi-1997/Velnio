@@ -1,0 +1,116 @@
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.core.exceptions import BadRequestException, InsufficientCreditsException, NotFoundException
+from app.core.logging import get_logger
+from app.models.analysis import ProductAnalysis
+from app.models.angle import SellingAngle
+from app.models.campaign import CampaignStatus
+from app.models.credit import CreditTransaction, CreditWallet, TransactionType
+from app.models.landing import LandingPage, LandingSection, LandingStatus
+from app.models.offer import Offer
+from app.models.product import Product
+from app.modules.campaigns.infrastructure import CampaignRepository
+from app.services.ai import get_ai_provider
+
+logger = get_logger(__name__)
+
+
+class CampaignLandingService:
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
+        self.campaigns = CampaignRepository(db)
+
+    async def get(self, campaign_id: UUID, workspace_id: UUID) -> LandingPage:
+        if await self.campaigns.get_for_workspace(campaign_id, workspace_id) is None:
+            raise NotFoundException("Campaign")
+        result = await self.db.execute(select(LandingPage).where(LandingPage.campaign_id == campaign_id))
+        landing = result.scalar_one_or_none()
+        if landing is None:
+            raise NotFoundException("Landing page")
+        return landing
+
+    async def generate(self, campaign_id: UUID, workspace_id: UUID) -> LandingPage:
+        campaign = await self.campaigns.get_for_workspace(campaign_id, workspace_id)
+        if campaign is None:
+            raise NotFoundException("Campaign")
+
+        product_result = await self.db.execute(select(Product).where(Product.id == campaign.product_id))
+        product = product_result.scalar_one_or_none()
+        if product is None:
+            raise NotFoundException("Product")
+
+        angle_result = await self.db.execute(
+            select(SellingAngle).where(SellingAngle.campaign_id == campaign_id, SellingAngle.selected == True)
+        )
+        angle = angle_result.scalar_one_or_none()
+        if angle is None:
+            raise BadRequestException("Please select a selling angle first")
+
+        analysis_result = await self.db.execute(select(ProductAnalysis).where(ProductAnalysis.product_id == product.id))
+        analysis = analysis_result.scalar_one_or_none()
+        offer_result = await self.db.execute(select(Offer).where(Offer.campaign_id == campaign_id))
+        offer = offer_result.scalar_one_or_none()
+
+        wallet_result = await self.db.execute(select(CreditWallet).where(CreditWallet.workspace_id == workspace_id))
+        wallet = wallet_result.scalar_one_or_none()
+        if wallet is None or wallet.balance < settings.PLAN_LANDING_COST:
+            raise InsufficientCreditsException()
+
+        existing_result = await self.db.execute(select(LandingPage).where(LandingPage.campaign_id == campaign_id))
+        existing_landing = existing_result.scalar_one_or_none()
+        if existing_landing:
+            sections_result = await self.db.execute(
+                select(LandingSection).where(LandingSection.landing_page_id == existing_landing.id)
+            )
+            for section in sections_result.scalars().all():
+                await self.db.delete(section)
+            await self.db.delete(existing_landing)
+            await self.db.flush()
+
+        try:
+            landing_data = await get_ai_provider().generate_landing_for_campaign(
+                product, campaign, angle, analysis, offer
+            )
+            landing = LandingPage(
+                campaign_id=campaign_id,
+                product_id=product.id,
+                selling_angle_id=angle.id,
+                title=landing_data["title"],
+                slug=landing_data["slug"],
+                status=LandingStatus.READY,
+                version=1,
+            )
+            self.db.add(landing)
+            await self.db.flush()
+
+            for i, section_data in enumerate(landing_data["sections"]):
+                self.db.add(LandingSection(
+                    landing_page_id=landing.id,
+                    section_type=section_data["section_type"],
+                    position=i,
+                    content=section_data["content"],
+                ))
+
+            wallet.balance -= settings.PLAN_LANDING_COST
+            self.db.add(CreditTransaction(
+                workspace_id=workspace_id,
+                wallet_id=wallet.id,
+                amount=-settings.PLAN_LANDING_COST,
+                transaction_type=TransactionType.USAGE,
+                description="Generate landing page",
+                reference_type="landing_page",
+                reference_id=campaign_id,
+            ))
+            campaign.status = CampaignStatus.LANDING_READY
+            await self.db.flush()
+            await self.db.refresh(landing)
+            return landing
+        except InsufficientCreditsException:
+            raise
+        except Exception as exc:
+            logger.error(f"Landing generation failed: {exc}")
+            raise BadRequestException("Landing generation failed. Please try again.")
