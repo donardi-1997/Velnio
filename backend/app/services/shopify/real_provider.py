@@ -320,7 +320,7 @@ class RealShopifyProvider(ShopifyProvider):
             if requested.get("compare_at_price") is not None:
                 variant_input["compareAtPrice"] = str(requested["compare_at_price"])
             if requested.get("sku"):
-                variant_input["inventoryItem"] = {"sku": str(requested["sku"]), "tracked": True}
+                variant_input["inventoryItem"] = {"sku": str(requested["sku"])}
             variant_data = await self._graphql(
                 access_token,
                 shop_domain,
