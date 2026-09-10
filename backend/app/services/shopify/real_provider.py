@@ -299,7 +299,13 @@ class RealShopifyProvider(ShopifyProvider):
             shop_domain,
             """
             query VelnioPublications {
-              publications(first: 50) { nodes { id name autoPublish } }
+              publications(first: 50, catalogType: APP) {
+                nodes {
+                  id
+                  autoPublish
+                  channels(first: 5) { nodes { handle } }
+                }
+              }
             }
             """,
         )
@@ -309,7 +315,15 @@ class RealShopifyProvider(ShopifyProvider):
             (
                 node
                 for node in nodes
-                if isinstance(node, dict) and str(node.get("name", "")).strip().lower() == "online store"
+                if isinstance(node, dict)
+                and any(
+                    isinstance(channel, dict) and channel.get("handle") == "online_store"
+                    for channel in (
+                        ((node.get("channels") or {}).get("nodes") or [])
+                        if isinstance(node.get("channels"), dict)
+                        else []
+                    )
+                )
             ),
             None,
         )
