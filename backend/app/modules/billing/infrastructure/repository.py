@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Sequence
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.credit import CreditTransaction, CreditWallet
+from app.models.credit import CreditTransaction, CreditWallet, TransactionType
 from app.models.plan import Plan
-from app.models.subscription import Subscription
+from app.models.product import Product
+from app.models.store import Store, StoreStatus
+from app.models.subscription import BillingWebhookEvent, Subscription
 
 
 class BillingRepository:
@@ -34,8 +37,108 @@ class BillingRepository:
         result = await self.db.execute(select(Plan).where(Plan.active == True))
         return result.scalars().all()
 
+    async def get_plan_by_code(self, code: str) -> Plan | None:
+        result = await self.db.execute(
+            select(Plan).where(Plan.code == code.upper(), Plan.active == True)
+        )
+        return result.scalar_one_or_none()
+
     async def get_subscription(self, workspace_id: UUID) -> Subscription | None:
         result = await self.db.execute(
             select(Subscription).where(Subscription.workspace_id == workspace_id)
         )
         return result.scalar_one_or_none()
+
+    async def get_subscription_by_provider_id(self, provider_subscription_id: str) -> Subscription | None:
+        result = await self.db.execute(
+            select(Subscription).where(
+                Subscription.provider_subscription_id == provider_subscription_id
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_subscription_by_customer_id(self, provider_customer_id: str) -> Subscription | None:
+        result = await self.db.execute(
+            select(Subscription).where(
+                Subscription.provider_customer_id == provider_customer_id
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def flush_and_refresh_subscription(self, subscription: Subscription) -> Subscription:
+        self.db.add(subscription)
+        await self.db.flush()
+        await self.db.refresh(subscription)
+        return subscription
+
+    async def webhook_event_exists(self, provider: str, provider_event_id: str) -> bool:
+        result = await self.db.execute(
+            select(BillingWebhookEvent.id).where(
+                BillingWebhookEvent.provider == provider,
+                BillingWebhookEvent.provider_event_id == provider_event_id,
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def add_webhook_event(self, provider: str, provider_event_id: str, event_type: str) -> None:
+        self.db.add(
+            BillingWebhookEvent(
+                provider=provider,
+                provider_event_id=provider_event_id,
+                event_type=event_type,
+            )
+        )
+        await self.db.flush()
+
+    async def count_active_stores(self, workspace_id: UUID) -> int:
+        result = await self.db.execute(
+            select(func.count(Store.id)).where(
+                Store.workspace_id == workspace_id,
+                Store.status != StoreStatus.DISCONNECTED,
+            )
+        )
+        return int(result.scalar_one())
+
+    async def count_products_created_between(
+        self,
+        workspace_id: UUID,
+        start: datetime,
+        end: datetime,
+    ) -> int:
+        result = await self.db.execute(
+            select(func.count(Product.id)).where(
+                Product.workspace_id == workspace_id,
+                Product.created_at >= start,
+                Product.created_at < end,
+            )
+        )
+        return int(result.scalar_one())
+
+    async def allocate_credits(
+        self,
+        workspace_id: UUID,
+        amount: int,
+        description: str,
+    ) -> None:
+        wallet = await self.get_wallet(workspace_id)
+        if wallet is None:
+            wallet = CreditWallet(
+                workspace_id=workspace_id,
+                balance=0,
+                lifetime_credits=0,
+            )
+            self.db.add(wallet)
+            await self.db.flush()
+        wallet.balance += amount
+        wallet.lifetime_credits += amount
+        self.db.add(
+            CreditTransaction(
+                workspace_id=workspace_id,
+                wallet_id=wallet.id,
+                amount=amount,
+                transaction_type=TransactionType.ALLOCATION,
+                description=description,
+                reference_type="billing",
+            )
+        )
+        await self.db.flush()
