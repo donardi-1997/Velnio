@@ -24,13 +24,20 @@ class CampaignPublishingService:
         self.db = db
         self.shopify_connection = ShopifyConnectionService(db)
 
-    async def _get_campaign(self, campaign_id: UUID, workspace_id: UUID) -> Campaign:
-        result = await self.db.execute(
-            select(Campaign).where(
-                Campaign.id == campaign_id,
-                Campaign.workspace_id == workspace_id,
-            )
+    async def _get_campaign(
+        self,
+        campaign_id: UUID,
+        workspace_id: UUID,
+        *,
+        for_update: bool = False,
+    ) -> Campaign:
+        statement = select(Campaign).where(
+            Campaign.id == campaign_id,
+            Campaign.workspace_id == workspace_id,
         )
+        if for_update:
+            statement = statement.with_for_update()
+        result = await self.db.execute(statement)
         campaign = result.scalar_one_or_none()
         if not campaign:
             raise NotFoundException("Campaign")
@@ -118,7 +125,7 @@ class CampaignPublishingService:
         return {"ready": all(item["status"] == "passed" for item in checks), "checks": checks}
 
     async def publish(self, campaign_id: UUID, workspace_id: UUID) -> dict:
-        campaign = await self._get_campaign(campaign_id, workspace_id)
+        campaign = await self._get_campaign(campaign_id, workspace_id, for_update=True)
 
         if campaign.status == CampaignStatus.PUBLISHED and campaign.external_product_id:
             return {
@@ -168,6 +175,8 @@ class CampaignPublishingService:
                     status=CampaignStatus.PUBLISHED,
                     external_product_id=str(shopify_product_id),
                     external_page_id=publish_result.get("shopify_page_id"),
+                    external_page_handle=publish_result.get("shopify_page_handle"),
+                    external_page_url=publish_result.get("shopify_page_url"),
                     published_at=datetime.now(timezone.utc),
                     last_publish_error=None,
                 )

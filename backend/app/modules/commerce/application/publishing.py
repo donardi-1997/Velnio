@@ -20,7 +20,9 @@ class ProductPublishingService:
 
     async def publish(self, product_id: UUID, workspace_id: UUID) -> dict:
         result = await self.db.execute(
-            select(Product).where(Product.id == product_id, Product.workspace_id == workspace_id)
+            select(Product)
+            .where(Product.id == product_id, Product.workspace_id == workspace_id)
+            .with_for_update()
         )
         product = result.scalar_one_or_none()
         if product is None:
