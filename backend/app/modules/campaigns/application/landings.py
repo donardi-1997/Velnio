@@ -18,6 +18,7 @@ from app.models.credit import CreditTransaction, CreditWallet, TransactionType
 from app.models.landing import LandingPage, LandingSection, LandingStatus
 from app.models.offer import Offer
 from app.models.product import Product
+from app.models.tracking import LandingVariant
 from app.modules.campaigns.infrastructure import CampaignRepository
 from app.services.ai import get_ai_provider
 
@@ -37,6 +38,45 @@ class CampaignLandingService:
         if landing is None:
             raise NotFoundException("Landing page")
         return landing
+
+    async def _get_control_variant(self, campaign_id: UUID) -> LandingVariant | None:
+        result = await self.db.execute(
+            select(LandingVariant).where(
+                LandingVariant.campaign_id == campaign_id,
+                LandingVariant.variant_key == "A",
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def _attach_control_variant(
+        self,
+        campaign_id: UUID,
+        landing: LandingPage,
+        angle: SellingAngle,
+        offer: Offer | None,
+    ) -> LandingVariant:
+        control = await self._get_control_variant(campaign_id)
+        if control is None:
+            other_result = await self.db.execute(
+                select(LandingVariant).where(LandingVariant.campaign_id == campaign_id)
+            )
+            has_experiment_traffic = any(
+                float(item.traffic_weight or 0) > 0 for item in other_result.scalars().all()
+            )
+            control = LandingVariant(
+                campaign_id=campaign_id,
+                name="Control",
+                variant_key="A",
+                status="PAUSED" if has_experiment_traffic else "ACTIVE",
+                traffic_weight=0 if has_experiment_traffic else 100,
+            )
+            self.db.add(control)
+
+        control.landing_page_id = landing.id
+        control.selling_angle_id = angle.id
+        control.offer_id = offer.id if offer else None
+        await self.db.flush()
+        return control
 
     async def generate(self, campaign_id: UUID, workspace_id: UUID) -> LandingPage:
         campaign = await self.campaigns.get_for_workspace(campaign_id, workspace_id)
@@ -68,6 +108,9 @@ class CampaignLandingService:
         existing_result = await self.db.execute(select(LandingPage).where(LandingPage.campaign_id == campaign_id))
         existing_landing = existing_result.scalar_one_or_none()
         if existing_landing:
+            control = await self._get_control_variant(campaign_id)
+            if control and control.landing_page_id == existing_landing.id:
+                control.landing_page_id = None
             sections_result = await self.db.execute(
                 select(LandingSection).where(LandingSection.landing_page_id == existing_landing.id)
             )
@@ -99,6 +142,8 @@ class CampaignLandingService:
                     position=i,
                     content=section_data["content"],
                 ))
+
+            await self._attach_control_variant(campaign_id, landing, angle, offer)
 
             wallet.balance -= settings.PLAN_LANDING_COST
             self.db.add(CreditTransaction(

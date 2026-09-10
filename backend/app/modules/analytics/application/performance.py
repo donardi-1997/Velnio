@@ -19,6 +19,7 @@ from app.models.campaign import Campaign
 from app.models.credit import CreditTransaction, CreditWallet, TransactionType
 from app.models.tracking import CampaignPerformanceInsight, LandingVariant
 from app.services.ai import get_ai_provider
+from app.services.experiments import ExperimentAnalysisService
 from app.services.metrics import CampaignMetricsService
 
 logger = get_logger(__name__)
@@ -28,6 +29,7 @@ class PerformanceService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
         self.metrics = CampaignMetricsService(db)
+        self.experiments = ExperimentAnalysisService()
 
     async def _campaign(self, campaign_id: UUID, workspace_id: UUID) -> Campaign:
         result = await self.db.execute(
@@ -68,7 +70,12 @@ class PerformanceService:
         for item in metrics:
             variant_id = item.get("variant_id")
             if variant_id:
-                result = await self.db.execute(select(LandingVariant).where(LandingVariant.id == UUID(variant_id)))
+                result = await self.db.execute(
+                    select(LandingVariant).where(
+                        LandingVariant.id == UUID(variant_id),
+                        LandingVariant.campaign_id == campaign_id,
+                    )
+                )
                 variant = result.scalar_one_or_none()
                 item["variant_name"] = variant.name if variant else "Unknown"
                 item["variant_key"] = variant.variant_key if variant else "?"
@@ -76,6 +83,15 @@ class PerformanceService:
                 item["traffic_weight"] = variant.traffic_weight if variant else 0
             enriched.append(item)
         return {"variants": enriched}
+
+    async def get_winner(self, campaign_id: UUID, workspace_id: UUID) -> dict:
+        variant_performance = await self.get_variant_performance(campaign_id, workspace_id)
+        result = self.experiments.analyze_experiment(variant_performance["variants"])
+        return {
+            **result,
+            "minimum_sessions_per_variant": settings.EXPERIMENT_MIN_SESSIONS_PER_VARIANT,
+            "minimum_purchases_per_variant": settings.EXPERIMENT_MIN_PURCHASES,
+        }
 
     async def get_angle_performance(self, campaign_id: UUID, workspace_id: UUID):
         await self._campaign(campaign_id, workspace_id)

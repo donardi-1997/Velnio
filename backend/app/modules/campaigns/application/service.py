@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 from typing import Sequence
 from uuid import UUID
 
@@ -39,6 +40,7 @@ class CampaignService:
             shipping_strategy=data.shipping_strategy,
             notes=data.notes,
             store_id=data.store_id,
+            tracking_key=secrets.token_urlsafe(32),
         )
         return await self.repository.add(campaign)
 

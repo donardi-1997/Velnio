@@ -22,6 +22,7 @@ def test_performance_routes_preserved():
     assert set(_contract(performance.router)) == {
         ("GET", "/{campaign_id}/performance"),
         ("GET", "/{campaign_id}/performance/timeline"),
+        ("GET", "/{campaign_id}/performance/winner"),
         ("GET", "/{campaign_id}/variants/performance"),
         ("GET", "/{campaign_id}/angles/performance"),
         ("POST", "/{campaign_id}/performance/analyze"),
@@ -32,6 +33,7 @@ def test_tracking_routes_preserved():
     assert set(_contract(tracking.router)) == {
         ("POST", "/events/{tracking_key}"),
         ("POST", "/batch/{tracking_key}"),
+        ("POST", "/beacon/{tracking_key}"),
     }
 
 

@@ -1,7 +1,6 @@
 import pytest
 import uuid
 from httpx import AsyncClient
-from datetime import datetime, timezone, timedelta
 
 
 async def _setup(client: AsyncClient) -> tuple:
@@ -15,7 +14,7 @@ async def _setup(client: AsyncClient) -> tuple:
     camp = (await client.post(f"/api/campaigns/by-product/{product_id}", json={
         "name": "Track Campaign", "selling_price": 29.99
     }, headers=headers)).json()
-    # Generate tracking key by updating campaign
+    # Keep explicit update coverage for backwards compatibility with existing campaigns.
     tracking_key = uuid.uuid4().hex[:32]
     await client.patch(f"/api/campaigns/{camp['id']}", json={"tracking_key": tracking_key}, headers=headers)
     return token, headers, camp["id"], tracking_key
@@ -60,7 +59,7 @@ async def test_invalid_tracking_key(client: AsyncClient):
 async def test_revenue_validation(client: AsyncClient):
     token, headers, campaign_id, tracking_key = await _setup(client)
     response = await client.post(f"/api/tracking/events/{tracking_key}", json={
-        "event_type": "PURCHASE",
+        "event_type": "CTA_CLICK",
         "session_id": str(uuid.uuid4()),
         "revenue": -10,
     })
@@ -68,7 +67,7 @@ async def test_revenue_validation(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_purchase_event(client: AsyncClient):
+async def test_public_purchase_event_is_rejected(client: AsyncClient):
     token, headers, campaign_id, tracking_key = await _setup(client)
     response = await client.post(f"/api/tracking/events/{tracking_key}", json={
         "event_type": "PURCHASE",
@@ -77,24 +76,18 @@ async def test_purchase_event(client: AsyncClient):
         "currency": "USD",
         "external_event_id": "shopify_order_123",
     })
-    assert response.status_code == 200
+    assert response.status_code == 400
+    assert "verified commerce webhook" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
-async def test_purchase_deduplication(client: AsyncClient):
+async def test_public_batch_purchase_is_rejected(client: AsyncClient):
     token, headers, campaign_id, tracking_key = await _setup(client)
-    event_id = "shopify_order_123"
-    await client.post(f"/api/tracking/events/{tracking_key}", json={
-        "event_type": "PURCHASE",
-        "session_id": str(uuid.uuid4()),
-        "revenue": 49.99,
-        "external_event_id": event_id,
-    })
-    response = await client.post(f"/api/tracking/events/{tracking_key}", json={
-        "event_type": "PURCHASE",
-        "session_id": str(uuid.uuid4()),
-        "revenue": 49.99,
-        "external_event_id": event_id,
+    response = await client.post(f"/api/tracking/batch/{tracking_key}", json={
+        "events": [
+            {"event_type": "PAGE_VIEW", "session_id": str(uuid.uuid4())},
+            {"event_type": "PURCHASE", "session_id": str(uuid.uuid4()), "revenue": 49.99},
+        ]
     })
     assert response.status_code == 400
 

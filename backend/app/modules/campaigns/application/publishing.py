@@ -1,9 +1,11 @@
 from datetime import datetime, timezone
+import secrets
 from uuid import UUID
 
 from sqlalchemy import select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.exceptions import AppException, BadGatewayException, NotFoundException
 from app.core.logging import get_logger
 from app.models.angle import SellingAngle
@@ -12,9 +14,12 @@ from app.models.landing import LandingPage
 from app.models.offer import Offer
 from app.models.product import Product, ProductImage
 from app.models.store import Store, StoreStatus
+from app.models.tracking import LandingVariant
 from app.models.visual_direction import CampaignVisualDirection
 from app.modules.commerce.application.shopify_connection import ShopifyConnectionService
 from app.services.shopify import get_shopify_provider
+from app.services.shopify.real_provider import RealShopifyProvider
+from app.services.shopify.webhooks import ShopifyWebhookRegistrar, get_public_api_origin
 
 logger = get_logger(__name__)
 
@@ -64,6 +69,91 @@ class CampaignPublishingService:
             )
         )
         return result.scalar_one_or_none()
+
+    async def _prepare_storefront_tracking(
+        self,
+        campaign: Campaign,
+        landing: LandingPage | None,
+        angle: SellingAngle | None,
+        offer: Offer | None,
+    ) -> None:
+        if landing is None:
+            return
+        if not campaign.tracking_key:
+            campaign.tracking_key = secrets.token_urlsafe(32)
+
+        result = await self.db.execute(
+            select(LandingVariant).where(
+                LandingVariant.campaign_id == campaign.id,
+                LandingVariant.variant_key == "A",
+            )
+        )
+        control = result.scalar_one_or_none()
+        if control is None:
+            all_result = await self.db.execute(
+                select(LandingVariant).where(LandingVariant.campaign_id == campaign.id)
+            )
+            existing_variants = all_result.scalars().all()
+            has_existing_traffic = any(
+                float(item.traffic_weight or 0) > 0 for item in existing_variants
+            )
+            control = LandingVariant(
+                campaign_id=campaign.id,
+                name="Control",
+                variant_key="A",
+                status="PAUSED" if has_existing_traffic else "ACTIVE",
+                traffic_weight=0 if has_existing_traffic else 100,
+                landing_page_id=landing.id,
+                selling_angle_id=angle.id if angle else landing.selling_angle_id,
+                offer_id=offer.id if offer else None,
+            )
+            self.db.add(control)
+            await self.db.flush()
+        else:
+            control.landing_page_id = landing.id
+            if angle:
+                control.selling_angle_id = angle.id
+            if offer:
+                control.offer_id = offer.id
+
+        variants_result = await self.db.execute(
+            select(LandingVariant)
+            .where(
+                LandingVariant.campaign_id == campaign.id,
+                LandingVariant.status == "ACTIVE",
+                LandingVariant.traffic_weight > 0,
+            )
+            .order_by(LandingVariant.variant_key)
+        )
+        active_variants = list(variants_result.scalars().all())
+        if not active_variants:
+            control.status = "ACTIVE"
+            control.traffic_weight = 100
+            active_variants = [control]
+
+        landing_ids = {
+            item.landing_page_id for item in active_variants if item.landing_page_id is not None
+        }
+        pages_by_id: dict[UUID, LandingPage] = {}
+        if landing_ids:
+            pages_result = await self.db.execute(
+                select(LandingPage).where(LandingPage.id.in_(landing_ids))
+            )
+            pages_by_id = {page.id: page for page in pages_result.scalars().all()}
+
+        landing._velnio_tracking = {
+            "endpoint": (
+                f"{get_public_api_origin()}/api/tracking/beacon/{campaign.tracking_key}"
+            ),
+            "tracking_key": campaign.tracking_key,
+            "campaign_id": str(campaign.id),
+            "product_handle": RealShopifyProvider._stable_handle("campaign", campaign.id),
+        }
+        landing._velnio_experiment_variants = [
+            (item, pages_by_id.get(item.landing_page_id) or landing)
+            for item in active_variants
+        ]
+        await self.db.flush()
 
     async def readiness(self, campaign_id: UUID, workspace_id: UUID) -> dict:
         campaign = await self._get_campaign(campaign_id, workspace_id)
@@ -160,7 +250,11 @@ class CampaignPublishingService:
         offer = result.scalar_one_or_none()
 
         try:
-            publish_result = await get_shopify_provider().publish_campaign(
+            await self._prepare_storefront_tracking(campaign, landing, angle, offer)
+            provider = get_shopify_provider()
+            if isinstance(provider, RealShopifyProvider) and store is not None:
+                await ShopifyWebhookRegistrar().ensure_orders_create(store)
+            publish_result = await provider.publish_campaign(
                 campaign, product, store, angle, landing, offer
             )
             shopify_product_id = publish_result.get("shopify_product_id")

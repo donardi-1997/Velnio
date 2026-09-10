@@ -19,6 +19,7 @@ def test_commerce_api_preserves_expected_routes():
         ("GET", "/stores"),
         ("POST", "/stores/shopify/connect"),
         ("GET", "/stores/shopify/callback"),
+        ("POST", "/stores/shopify/webhooks/orders-create"),
         ("POST", "/stores/mock-connect"),
         ("POST", "/stores/{store_id}/disconnect"),
         ("POST", "/products/{product_id}/publish"),
@@ -33,6 +34,7 @@ def test_legacy_commerce_routers_are_modular_routers():
     assert "/stores" in modular_by_path
     assert "/stores/shopify/connect" in modular_by_path
     assert "/stores/shopify/callback" in modular_by_path
+    assert "/stores/shopify/webhooks/orders-create" in modular_by_path
     assert "/products/{product_id}/publish" in modular_by_path
 
 
