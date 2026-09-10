@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import dashboard, performance, tracking
+from app.modules.analytics.api import dashboard, performance, tracking
 
 router = APIRouter()
 router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
