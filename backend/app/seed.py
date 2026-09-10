@@ -40,9 +40,9 @@ async def seed():
 
         plans = [
             Plan(id=uuid.uuid4(), code="FREE", name="Free", monthly_price=0, included_credits=10, max_stores=1, max_products_per_month=2),
-            Plan(id=uuid.uuid4(), code="LAUNCH", name="Starter", monthly_price=29, included_credits=100, max_stores=1, max_products_per_month=10),
-            Plan(id=uuid.uuid4(), code="GROWTH", name="Growth", monthly_price=79, included_credits=400, max_stores=3, max_products_per_month=30),
-            Plan(id=uuid.uuid4(), code="SCALE", name="Scale", monthly_price=149, included_credits=1200, max_stores=10, max_products_per_month=100),
+            Plan(id=uuid.uuid4(), code="LAUNCH", name="Launch", monthly_price=19, included_credits=100, max_stores=1, max_products_per_month=10),
+            Plan(id=uuid.uuid4(), code="GROWTH", name="Growth", monthly_price=49, included_credits=400, max_stores=3, max_products_per_month=30),
+            Plan(id=uuid.uuid4(), code="SCALE", name="Scale", monthly_price=99, included_credits=1200, max_stores=10, max_products_per_month=100),
         ]
         for p in plans:
             db.add(p)
@@ -138,132 +138,226 @@ async def seed():
 
         product_ids = []
         for pdata in products_data:
-            product = Product(
+            p = Product(
                 id=uuid.uuid4(),
                 workspace_id=workspace.id,
-                source_type=SourceType.MANUAL,
-                country="US",
-                target_country=pdata["target_country"],
-                target_language=pdata["target_language"],
-                currency="USD",
-                **{k: v for k, v in pdata.items() if k not in ("target_country", "target_language")},
+                store_id=store.id,
+                **pdata,
             )
-            db.add(product)
-            await db.flush()
-            product_ids.append(product.id)
+            db.add(p)
+            product_ids.append(p.id)
+        await db.flush()
 
-        # Add images to first product
-        db.add(ProductImage(
-            id=uuid.uuid4(), product_id=product_ids[0], source_type=ImageSourceType.UPLOADED,
-            image_url="https://images.unsplash.com/photo-1558317374-067fb5f30001?w=800",
-            purpose=ImagePurpose.MAIN, sort_order=0,
-        ))
-        db.add(ProductImage(
-            id=uuid.uuid4(), product_id=product_ids[0], source_type=ImageSourceType.UPLOADED,
-            image_url="https://images.unsplash.com/photo-1601362840469-51e4d8d58785?w=800",
-            purpose=ImagePurpose.GALLERY, sort_order=1,
-        ))
-
-        # Analysis for first product
         analysis = ProductAnalysis(
-            id=uuid.uuid4(), product_id=product_ids[0], overall_score=87.0,
-            demand_score=90, visual_score=85, problem_score=88, margin_score=92,
-            saturation_score=75, ad_potential_score=90, impulse_score=82, return_risk_score=70,
-            strengths=["Strong profit margin", "Solves a clear pain point", "Highly demonstrable"],
-            risks=["Competitive niche", "Requires strong creative differentiation"],
-            summary="Strong product opportunity with excellent margins and visual ad potential.",
+            id=uuid.uuid4(),
+            product_id=product_ids[0],
+            overall_score=84,
+            demand_score=8.5,
+            visual_score=9.2,
+            problem_score=9.0,
+            margin_score=8.1,
+            saturation_score=5.8,
+            ad_potential_score=9.4,
+            impulse_score=8.7,
+            return_risk_score=6.2,
+            summary="Strong product with excellent visual marketing potential. The portable car vacuum solves a real, recurring problem for car owners. High impulse purchase potential.",
+            strengths=["High demand in automotive accessories", "Strong visual appeal for social media", "Clear problem-solution product", "Good profit margins"],
+            risks=["Moderate market saturation", "Shipping time sensitivity"],
+            recommended_price_min=24.99,
+            recommended_price_max=44.99,
+            generated_at=datetime.now(timezone.utc),
         )
         db.add(analysis)
 
-        # Create a campaign for the first product
+        angles = [
+            SellingAngle(id=uuid.uuid4(), product_id=product_ids[0], name="Pet Hair Problem", target_audience="Pet owners who drive", pain_point="Dog and cat hair gets everywhere in the car and is nearly impossible to remove.", main_promise="Keep your car spotless in minutes without expensive detailing.", hook="Your pet loves riding shotgun. The hair doesn't have to stay.", description="Target pet owners tired of fur on car seats.", score=92, position=1, selected=True),
+            SellingAngle(id=uuid.uuid4(), product_id=product_ids[0], name="Busy Parents", target_audience="Parents with young children", pain_point="Kids create constant messes in the car.", main_promise="Restore your car to showroom clean after every trip.", hook="Kids will be kids. Your car doesn't have to show it.", description="Appeals to parents maintaining a clean family vehicle.", score=86, position=2, selected=False),
+            SellingAngle(id=uuid.uuid4(), product_id=product_ids[0], name="Rideshare Drivers", target_audience="Uber and Lyft drivers", pain_point="Between rides, the car accumulates dirt affecting ratings.", main_promise="Maintain a 5-star interior between every ride.", hook="Every ride is a new passenger. Keep your rating up.", description="Targets gig economy drivers needing cleanliness.", score=81, position=3, selected=False),
+        ]
+        for a in angles:
+            db.add(a)
+        await db.flush()
+
+        landing = LandingPage(
+            id=uuid.uuid4(),
+            product_id=product_ids[0],
+            selling_angle_id=angles[0].id,
+            title="Portable Car Vacuum - Official Store",
+            slug="portable-car-vacuum",
+            status=LandingStatus.READY,
+            version=1,
+        )
+        db.add(landing)
+        await db.flush()
+
+        sections = [
+            LandingSection(id=uuid.uuid4(), landing_page_id=landing.id, section_type="HERO", position=0, content={"headline": "Your pet loves riding shotgun. The hair doesn't have to stay.", "subheadline": "Keep your car spotless in minutes.", "cta_text": "Get yours today", "image_url": None}),
+            LandingSection(id=uuid.uuid4(), landing_page_id=landing.id, section_type="PROBLEM", position=1, content={"title": "The Problem", "description": "Pet hair gets everywhere in your car and standard vacuums can't reach it.", "items": ["Standard vacuums can't reach car seats", "Lint rollers barely make a dent", "Professional detailing is expensive"]}),
+            LandingSection(id=uuid.uuid4(), landing_page_id=landing.id, section_type="BENEFITS", position=2, content={"title": "Why Portable Car Vacuum", "items": [{"title": "Powerful Suction", "description": "Removes embedded pet hair and debris.", "icon": "zap"}, {"title": "Compact Design", "description": "Fits in your glove compartment.", "icon": "star"}, {"title": "Cordless", "description": "Wireless convenience for any vehicle.", "icon": "check"}]}),
+            LandingSection(id=uuid.uuid4(), landing_page_id=landing.id, section_type="OFFER", position=3, content={"title": "Special Launch Offer", "original_price": "34.99", "discount_price": "24.49", "savings": "10.50", "bonus": "Free shipping", "urgency": "Limited time offer"}),
+            LandingSection(id=uuid.uuid4(), landing_page_id=landing.id, section_type="FAQ", position=4, content={"title": "Frequently Asked Questions", "items": [{"question": "How long does shipping take?", "answer": "3-5 business days within the US."}, {"question": "What is your return policy?", "answer": "Full 30-day money-back guarantee."}, {"question": "Is there a warranty?", "answer": "1-year manufacturer warranty."}]}),
+        ]
+        for s in sections:
+            db.add(s)
+
         campaign = Campaign(
-            id=uuid.uuid4(), workspace_id=workspace.id, product_id=product_ids[0],
-            name="Car Vacuum - US Launch", target_country="US", target_language="en",
-            currency="USD", selling_price=34.99, supplier_price=12.99,
-            status=CampaignStatus.OFFER_READY,
+            id=uuid.uuid4(),
+            workspace_id=workspace.id,
+            product_id=product_ids[0],
+            store_id=store.id,
+            name="US Pet Owners - Summer Launch",
+            status=CampaignStatus.LANDING_READY,
+            target_country="US",
+            target_language="en",
+            currency="USD",
+            selling_price=34.99,
+            supplier_price=12.99,
+            target_audience="Pet owners who drive, ages 25-45",
+            payment_strategy="COD",
+            shipping_strategy="Free standard shipping",
+            notes="Primary campaign targeting pet owners in the US market",
         )
         db.add(campaign)
         await db.flush()
 
-        # Selling angles
-        angles_data = [
-            ("Pet Hair Problem", "Pet owners", "Stop fighting pet hair in your car", "problem_solution", 92),
-            ("60-Second Clean", "Busy professionals", "A spotless car before your next meeting", "convenience", 88),
-            ("Family Mess", "Parents", "Kids make the mess. This cleans it fast.", "problem_solution", 85),
+        campaign_angles = [
+            SellingAngle(id=uuid.uuid4(), campaign_id=campaign.id, product_id=product_ids[0], name="Pet Hair Problem", target_audience="Pet owners who drive", pain_point="Dog and cat hair gets everywhere in the car and is nearly impossible to remove.", main_promise="Keep your car spotless in minutes without expensive detailing.", hook="Your pet loves riding shotgun. The hair doesn't have to stay.", description="Target pet owners tired of fur on car seats.", score=92, position=1, selected=True),
+            SellingAngle(id=uuid.uuid4(), campaign_id=campaign.id, product_id=product_ids[0], name="Busy Parents", target_audience="Parents with young children", pain_point="Kids create constant messes in the car.", main_promise="Restore your car to showroom clean after every trip.", hook="Kids will be kids. Your car doesn't have to show it.", description="Appeals to parents maintaining a clean family vehicle.", score=86, position=2, selected=False),
+            SellingAngle(id=uuid.uuid4(), campaign_id=campaign.id, product_id=product_ids[0], name="Rideshare Drivers", target_audience="Uber and Lyft drivers", pain_point="Between rides, the car accumulates dirt affecting ratings.", main_promise="Maintain a 5-star interior between every ride.", hook="Every ride is a new passenger. Keep your rating up.", description="Targets gig economy drivers needing cleanliness.", score=81, position=3, selected=False),
         ]
-        angle_ids = []
-        for idx, (name, audience, hook, angle_type, score) in enumerate(angles_data):
-            angle = SellingAngle(
-                id=uuid.uuid4(), product_id=product_ids[0], campaign_id=campaign.id,
-                name=name, target_audience=audience, pain_point="Car interior gets dirty fast",
-                desire="Keep the car clean effortlessly", core_benefit="Powerful portable cleaning",
-                hook=hook, proof_idea="Before/after demonstration", angle_type=angle_type,
-                score=score, rank=idx + 1, is_selected=idx == 0,
-            )
-            db.add(angle)
-            angle_ids.append(angle.id)
+        for a in campaign_angles:
+            db.add(a)
         await db.flush()
-
-        campaign.selected_angle_id = angle_ids[0]
 
         offer = Offer(
-            id=uuid.uuid4(), campaign_id=campaign.id, product_id=product_ids[0],
-            offer_type=OfferType.PERCENTAGE_DISCOUNT, headline="20% OFF Today Only",
-            subheadline="Get a spotless car in minutes — without the car wash.",
-            cta_text="Get Mine Now", regular_price=44.99, sale_price=34.99,
-            discount_percentage=22, urgency_text="Limited stock available",
-            guarantee_text="30-day money-back guarantee",
+            id=uuid.uuid4(),
+            campaign_id=campaign.id,
+            headline="Get Your Car Pro-Level Clean for Just $24.49",
+            offer_type=OfferType.STANDARD,
+            primary_price=24.49,
+            compare_at_price=34.99,
+            discount_percentage=30,
+            free_shipping=True,
+            cash_on_delivery=False,
+            guarantee_days=30,
+            urgency_text="Limited time offer - ends tonight!",
+            bonus_text="Free microfiber cleaning cloth included",
         )
         db.add(offer)
-        await db.flush()
-        campaign.offer_id = offer.id
 
-        # Landing page
-        landing = LandingPage(
-            id=uuid.uuid4(), product_id=product_ids[0], campaign_id=campaign.id,
-            title="Portable Car Vacuum — Clean Smarter", theme="modern", status=LandingStatus.DRAFT,
+        campaign_landing = LandingPage(
+            id=uuid.uuid4(),
+            campaign_id=campaign.id,
+            product_id=product_ids[0],
+            selling_angle_id=campaign_angles[0].id,
+            title="Portable Car Vacuum - Official Store",
+            slug="portable-car-vacuum-pet-owners",
+            status=LandingStatus.READY,
+            version=1,
         )
-        db.add(landing)
+        db.add(campaign_landing)
         await db.flush()
-        sections = [
-            ("HERO", 0, {"headline": "Your Car. Spotless. In 60 Seconds.", "subheadline": "Powerful suction. Cordless freedom. Zero excuses.", "cta": "Get 20% OFF"}),
-            ("BENEFITS", 1, {"title": "Why Drivers Love It", "items": ["Powerful 120W suction", "Cordless & rechargeable", "Washable HEPA filter", "Fits in your glove box"]}),
-            ("PROBLEM_SOLUTION", 2, {"headline": "Pet Hair. Crumbs. Dust. Gone.", "body": "Stop paying for car washes every week. Clean any mess in minutes."}),
-            ("SOCIAL_PROOF", 3, {"headline": "Join 10,000+ Happy Drivers", "rating": 4.8, "reviews": 2341}),
-            ("FINAL_CTA", 4, {"headline": "Ready for a Cleaner Car?", "cta": "Get Yours — 20% OFF", "urgency": "Limited stock available"}),
+
+        campaign_sections = [
+            LandingSection(id=uuid.uuid4(), landing_page_id=campaign_landing.id, section_type="HERO", position=0, content={"headline": "Your pet loves riding shotgun. The hair doesn't have to stay.", "subheadline": "Keep your car spotless in minutes.", "cta_text": "Get yours today", "image_url": None}),
+            LandingSection(id=uuid.uuid4(), landing_page_id=campaign_landing.id, section_type="PROBLEM", position=1, content={"title": "The Problem", "description": "Pet hair gets everywhere in your car and standard vacuums can't reach it.", "items": ["Standard vacuums can't reach car seats", "Lint rollers barely make a dent", "Professional detailing is expensive"]}),
+            LandingSection(id=uuid.uuid4(), landing_page_id=campaign_landing.id, section_type="BENEFITS", position=2, content={"title": "Why Portable Car Vacuum", "items": [{"title": "Powerful Suction", "description": "Removes embedded pet hair and debris.", "icon": "zap"}, {"title": "Compact Design", "description": "Fits in your glove compartment.", "icon": "star"}, {"title": "Cordless", "description": "Wireless convenience for any vehicle.", "icon": "check"}]}),
+            LandingSection(id=uuid.uuid4(), landing_page_id=campaign_landing.id, section_type="OFFER", position=3, content={"title": "Special Launch Offer", "original_price": "34.99", "discount_price": "24.49", "savings": "10.50", "bonus": "Free shipping + microfiber cloth", "urgency": "Limited time offer - ends tonight!"}),
+            LandingSection(id=uuid.uuid4(), landing_page_id=campaign_landing.id, section_type="FAQ", position=4, content={"title": "Frequently Asked Questions", "items": [{"question": "How long does shipping take?", "answer": "3-5 business days within the US."}, {"question": "What is your return policy?", "answer": "Full 30-day money-back guarantee."}, {"question": "Is there a warranty?", "answer": "1-year manufacturer warranty."}]}),
         ]
-        for section_type, order, content in sections:
-            db.add(LandingSection(
-                id=uuid.uuid4(), landing_page_id=landing.id, section_type=section_type,
-                sort_order=order, content=content,
-            ))
+        for s in campaign_sections:
+            db.add(s)
 
-        campaign.landing_page_id = landing.id
-
+        # V0.3: Enrichment for first product
         enrichment = ProductEnrichment(
-            id=uuid.uuid4(), product_id=product_ids[0],
-            features=["120W motor", "Cordless", "Washable HEPA filter", "USB-C charging"],
-            benefits=["Clean anywhere", "No tangled cords", "Reusable filter", "Fast charging"],
-            use_cases=["Car interiors", "Office desks", "Small spaces"],
-            suggested_audiences=["Pet owners", "Parents", "Rideshare drivers", "Car enthusiasts"],
-            short_description="A compact cordless vacuum built for fast car cleanups.",
-            enriched_description="The Portable Car Vacuum combines strong suction with cordless convenience for effortless everyday cleaning.",
+            id=uuid.uuid4(),
+            product_id=product_ids[0],
+            features=[
+                "Powerful suction for deep cleaning",
+                "Compact cordless design",
+                "HEPA filtration system",
+                "Multiple attachment heads",
+                "Rechargeable battery",
+            ],
+            benefits=[
+                "Keep your car spotless in minutes",
+                "No expensive detailing needed",
+                "Remove pet hair effortlessly",
+                "Professional-grade清洁 results at home",
+                "Works on all vehicle types",
+            ],
+            use_cases=[
+                "Pet owners cleaning car interiors",
+                "Rideshare drivers maintaining ratings",
+                "Parents cleaning up after kids",
+                "Daily car maintenance",
+            ],
+            suggested_audiences=[
+                "Pet owners who drive",
+                "Uber/Lyft drivers",
+                "Parents with young children",
+            ],
+            short_description="Compact, powerful car vacuum for quick cleanups. Removes pet hair, crumbs, and dust easily.",
+            enriched_description="The Portable Car Vacuum is a compact, high-suction cleaning tool designed for quick and thorough car interior cleaning. Featuring HEPA filtration and multiple attachment heads, it easily removes pet hair, crumbs, and dust from seats, carpets, and hard-to-reach areas. Cordless and rechargeable, it's the perfect solution for pet owners, rideshare drivers, and anyone who wants to maintain a spotless vehicle without expensive detailing services.",
         )
         db.add(enrichment)
 
-        visual = CampaignVisualDirection(
-            id=uuid.uuid4(), campaign_id=campaign.id,
-            visual_style="Clean, premium automotive lifestyle",
-            tone="Modern, confident, practical",
-            color_palette=["#0f172a", "#4263eb", "#ffffff", "#e2e8f0"],
-            photography_style="Natural lighting, close-up product demonstrations, clean car interiors",
-            composition_notes="High contrast product shots with visible before/after results",
+        # V0.3: Visual direction for campaign
+        visual_direction = CampaignVisualDirection(
+            id=uuid.uuid4(),
+            campaign_id=campaign.id,
+            visual_style="Modern, clean, conversion-optimized for US market",
+            tone="Professional yet approachable, trust-building",
+            color_notes="Clean whites, product accent colors, high contrast for mobile",
+            background_style="Clean studio or lifestyle context",
+            photography_style="High-quality product photography with natural lighting",
+            audience_context="Tailored for pet owners who drive, ages 25-45",
+            additional_instructions="Focus on Portable Car Vacuum key benefits. Show pet hair removal in action.",
         )
-        db.add(visual)
+        db.add(visual_direction)
+
+        # V0.3: 8 mock images for the campaign
+        mock_images = [
+            ("HERO", 0),
+            ("LIFESTYLE", 1),
+            ("LIFESTYLE", 2),
+            ("PROBLEM", 3),
+            ("SOLUTION", 4),
+            ("BENEFIT", 5),
+            ("BENEFIT", 6),
+            ("COMPARISON", 7),
+        ]
+        for purpose_str, pos in mock_images:
+            img = ProductImage(
+                id=uuid.uuid4(),
+                product_id=product_ids[0],
+                campaign_id=campaign.id,
+                image_url=f"/storage/mock/{purpose_str.lower()}_car_vacuum_{pos}.png",
+                image_type="main",
+                position=pos,
+                generated_by_ai="true",
+                source_type="AI_GENERATED",
+                purpose=purpose_str,
+                storage_key=f"mock/{purpose_str.lower()}_car_vacuum_{pos}.png",
+                prompt=f"AI generated {purpose_str.lower()} image for Portable Car Vacuum",
+                generation_provider="mock",
+                generation_model="dall-e-3",
+                width=1200,
+                height=628,
+                selected=(purpose_str == "HERO"),
+            )
+            db.add(img)
+
+        # Update campaign status to reflect V0.3 readiness
+        campaign.status = CampaignStatus.READY
 
         await db.commit()
-        print("Seed complete.")
-        print("Demo login: demo@velnio.local / Demo12345!")
+        print("Seed completed successfully!")
+        print(f"  User: demo@velnio.local / Demo12345!")
+        print(f"  Plans: FREE, LAUNCH, GROWTH, SCALE")
+        print(f"  Products: Portable Car Vacuum, Pet Hair Remover, Neck Massager")
+        print(f"  Campaign: US Pet Owners - Summer Launch (Ready)")
+        print(f"  V0.3: Enrichment, Visual Direction, 8 Launch Pack images")
 
 
 if __name__ == "__main__":
