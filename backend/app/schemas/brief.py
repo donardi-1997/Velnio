@@ -1,10 +1,12 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
 
 
 class CampaignBriefResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     campaign_id: UUID
     workspace_id: UUID
@@ -19,6 +21,3 @@ class CampaignBriefResponse(BaseModel):
     credit_cost: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
