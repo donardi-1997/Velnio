@@ -9,7 +9,7 @@ from app.models.landing import LandingPage, LandingSection
 from app.models.offer import Offer
 from app.models.credit import CreditWallet, CreditTransaction
 from app.models.plan import Plan
-from app.models.subscription import Subscription
+from app.models.subscription import BillingWebhookEvent, Subscription
 from app.models.enrichment import ProductEnrichment
 from app.models.visual_direction import CampaignVisualDirection
 from app.models.tracking import TrackingEvent, LandingVariant, CampaignPerformanceInsight
@@ -23,7 +23,7 @@ __all__ = [
     "Campaign", "ProductAnalysis", "SellingAngle",
     "LandingPage", "LandingSection", "Offer",
     "CreditWallet", "CreditTransaction",
-    "Plan", "Subscription",
+    "Plan", "Subscription", "BillingWebhookEvent",
     "ProductEnrichment", "CampaignVisualDirection",
     "TrackingEvent", "LandingVariant", "CampaignPerformanceInsight",
     "GoogleDriveConnection", "GoogleDriveOAuthState", "ProductSourceDocument",
