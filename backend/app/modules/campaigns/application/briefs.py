@@ -5,11 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.exceptions import (
-    BadGatewayException,
-    InsufficientCreditsException,
-    NotFoundException,
-)
+from app.core.exceptions import InsufficientCreditsException, NotFoundException
 from app.models.brief import CampaignBrief
 from app.models.campaign import Campaign
 from app.models.credit import CreditTransaction, CreditWallet, TransactionType
