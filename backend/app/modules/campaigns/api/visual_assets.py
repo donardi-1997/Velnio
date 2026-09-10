@@ -3,7 +3,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_workspace
@@ -15,6 +15,8 @@ router = APIRouter()
 
 
 class VisualDirectionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     campaign_id: UUID
     visual_style: str
@@ -26,9 +28,6 @@ class VisualDirectionResponse(BaseModel):
     additional_instructions: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class VisualDirectionUpdate(BaseModel):
