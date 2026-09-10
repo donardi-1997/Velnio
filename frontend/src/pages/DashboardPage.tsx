@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
+import { OnboardingProgressCard } from '../components/OnboardingProgressCard'
 
 const productStatusColors: Record<string, string> = {
   DRAFT: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
@@ -54,6 +55,8 @@ export function DashboardPage() {
           <Link to="/products/new" className="btn-primary">Launch Product</Link>
         </div>
       </div>
+
+      <OnboardingProgressCard />
 
       <div className="grid grid-cols-5 gap-4 mb-8">
         {cards.map((c) => (

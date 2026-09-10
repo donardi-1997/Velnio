@@ -7,6 +7,7 @@ import { ReactNode } from 'react'
 
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: 'grid' },
+  { path: '/onboarding', label: 'Getting Started', icon: 'sparkles' },
   { path: '/products', label: 'Products', icon: 'box' },
   { path: '/campaigns', label: 'Campaigns', icon: 'megaphone' },
   { path: '/stores', label: 'Stores', icon: 'store' },
@@ -18,6 +19,7 @@ const navItems = [
 function SidebarIcon({ icon }: { icon: string }) {
   const icons: Record<string, string> = {
     grid: 'M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z',
+    sparkles: 'M5 3v4M3 5h4m10-2v4m-2-2h4M7 13v8m-4-4h8m8-6v6m-3-3h6',
     box: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
     megaphone: 'M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z',
     store: 'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z',
