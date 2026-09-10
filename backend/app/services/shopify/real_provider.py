@@ -107,6 +107,13 @@ class RealShopifyProvider(ShopifyProvider):
             raise BadRequestException(f"Shopify rejected the {resource} data")
         return payload
 
+    @staticmethod
+    def _stable_handle(kind: str, resource_id: Any) -> str:
+        safe_id = re.sub(r"[^a-z0-9-]+", "-", str(resource_id).lower()).strip("-")
+        if not safe_id:
+            raise BadRequestException("Shopify publish resource identifier is invalid")
+        return f"velnio-{kind}-{safe_id}"[:255].rstrip("-")
+
     def _store_credentials(self, store) -> tuple[str, str]:
         if store is None or store.status != StoreStatus.CONNECTED:
             raise BadRequestException("Shopify store not connected. Please connect your store first.")
@@ -212,6 +219,75 @@ class RealShopifyProvider(ShopifyProvider):
             "country_code": billing.get("countryCodeV2", "US") if isinstance(billing, dict) else "US",
         }
 
+    async def _find_owned_product_by_handle(
+        self,
+        access_token: str,
+        shop_domain: str,
+        handle: str,
+        ownership_tag: str,
+    ) -> Dict[str, Any] | None:
+        data = await self._graphql(
+            access_token,
+            shop_domain,
+            """
+            query VelnioProductByHandle($identifier: ProductIdentifierInput!) {
+              product: productByIdentifier(identifier: $identifier) {
+                id
+                title
+                handle
+                status
+                tags
+                variants(first: 1) { nodes { id } }
+              }
+            }
+            """,
+            {"identifier": {"handle": handle}},
+        )
+        product = data.get("product")
+        if product is None:
+            return None
+        if not isinstance(product, dict) or not product.get("id"):
+            raise BadGatewayException("Shopify returned an invalid product response")
+        tags = product.get("tags") or []
+        if not isinstance(tags, list) or ownership_tag not in tags:
+            raise BadRequestException("Shopify product handle conflicts with an existing merchant product")
+        return product
+
+    async def _find_owned_page_by_handle(
+        self,
+        access_token: str,
+        shop_domain: str,
+        handle: str,
+        ownership_marker: str,
+    ) -> Dict[str, Any] | None:
+        data = await self._graphql(
+            access_token,
+            shop_domain,
+            """
+            query VelnioPageByHandle($query: String!) {
+              pages(first: 2, query: $query) {
+                nodes { id title handle body }
+              }
+            }
+            """,
+            {"query": f"handle:{handle}"},
+        )
+        connection = data.get("pages")
+        nodes = connection.get("nodes", []) if isinstance(connection, dict) else []
+        exact = [
+            node
+            for node in nodes
+            if isinstance(node, dict) and str(node.get("handle") or "") == handle
+        ]
+        if not exact:
+            return None
+        page = exact[0]
+        if not page.get("id"):
+            raise BadGatewayException("Shopify returned an invalid page response")
+        if ownership_marker not in str(page.get("body") or ""):
+            raise BadRequestException("Shopify page handle conflicts with an existing merchant page")
+        return page
+
     async def _publish_product_to_online_store(
         self,
         access_token: str,
@@ -279,7 +355,11 @@ class RealShopifyProvider(ShopifyProvider):
         tags = product_data.get("tags") or []
         if isinstance(tags, str):
             tags = [tag.strip() for tag in tags.split(",") if tag.strip()]
-        product_input = {
+        tags = [str(tag) for tag in tags]
+        handle = str(product_data.get("handle") or "").strip().lower()
+        ownership_tag = str(product_data.get("ownership_tag") or "").strip()
+
+        product_input: Dict[str, Any] = {
             "title": product_data.get("title") or "Velnio Product",
             "descriptionHtml": product_data.get("body_html") or "",
             "vendor": product_data.get("vendor") or "Velnio",
@@ -287,26 +367,58 @@ class RealShopifyProvider(ShopifyProvider):
             "status": str(product_data.get("status") or "ACTIVE").upper(),
             "tags": tags,
         }
+        if handle:
+            product_input["handle"] = handle
+
         media = [
             {"originalSource": image["src"], "mediaContentType": "IMAGE"}
             for image in product_data.get("images", [])
             if isinstance(image, dict) and image.get("src")
         ]
-        data = await self._graphql(
-            access_token,
-            shop_domain,
-            """
-            mutation VelnioCreateProduct($product: ProductCreateInput!, $media: [CreateMediaInput!]) {
-              productCreate(product: $product, media: $media) {
-                product { id title status variants(first: 1) { nodes { id } } }
-                userErrors { field message }
-              }
-            }
-            """,
-            {"product": product_input, "media": media},
-        )
-        payload = self._require_mutation_result(data, "productCreate", "product")
-        product = payload.get("product")
+
+        product = None
+        if handle and ownership_tag:
+            product = await self._find_owned_product_by_handle(
+                access_token, shop_domain, handle, ownership_tag
+            )
+
+        if product is not None:
+            existing_tags = product.get("tags") or []
+            if isinstance(existing_tags, list):
+                product_input["tags"] = list(dict.fromkeys([*existing_tags, *tags]))
+            update_input = {**product_input, "id": product["id"]}
+            data = await self._graphql(
+                access_token,
+                shop_domain,
+                """
+                mutation VelnioUpdateProduct($product: ProductUpdateInput!) {
+                  productUpdate(product: $product) {
+                    product { id title handle status tags variants(first: 1) { nodes { id } } }
+                    userErrors { field message }
+                  }
+                }
+                """,
+                {"product": update_input},
+            )
+            payload = self._require_mutation_result(data, "productUpdate", "product")
+            product = payload.get("product")
+        else:
+            data = await self._graphql(
+                access_token,
+                shop_domain,
+                """
+                mutation VelnioCreateProduct($product: ProductCreateInput!, $media: [CreateMediaInput!]) {
+                  productCreate(product: $product, media: $media) {
+                    product { id title handle status tags variants(first: 1) { nodes { id } } }
+                    userErrors { field message }
+                  }
+                }
+                """,
+                {"product": product_input, "media": media},
+            )
+            payload = self._require_mutation_result(data, "productCreate", "product")
+            product = payload.get("product")
+
         if not isinstance(product, dict) or not product.get("id"):
             raise BadGatewayException("Shopify did not return a valid product")
 
@@ -345,26 +457,57 @@ class RealShopifyProvider(ShopifyProvider):
         shop_domain: str,
         page_data: Dict[str, Any],
     ) -> Dict[str, Any]:
-        data = await self._graphql(
-            access_token,
-            shop_domain,
-            """
-            mutation VelnioCreatePage($page: PageCreateInput!) {
-              pageCreate(page: $page) {
-                page { id title handle }
-                userErrors { field message code }
-              }
-            }
-            """,
-            {
-                "page": {
-                    "title": page_data.get("title") or "Velnio Landing Page",
-                    "body": page_data.get("body_html") or "",
-                    "isPublished": bool(page_data.get("published", True)),
+        handle = str(page_data.get("handle") or "").strip().lower()
+        ownership_marker = str(page_data.get("ownership_marker") or "").strip()
+        body = str(page_data.get("body_html") or "")
+        if ownership_marker and ownership_marker not in body:
+            body = f"<!-- {ownership_marker} -->\n{body}"
+
+        page_input: Dict[str, Any] = {
+            "title": page_data.get("title") or "Velnio Landing Page",
+            "body": body,
+            "isPublished": bool(page_data.get("published", True)),
+        }
+        if handle:
+            page_input["handle"] = handle
+
+        page = None
+        if handle and ownership_marker:
+            page = await self._find_owned_page_by_handle(
+                access_token, shop_domain, handle, ownership_marker
+            )
+
+        if page is not None:
+            data = await self._graphql(
+                access_token,
+                shop_domain,
+                """
+                mutation VelnioUpdatePage($id: ID!, $page: PageUpdateInput!) {
+                  pageUpdate(id: $id, page: $page) {
+                    page { id title handle }
+                    userErrors { field message code }
+                  }
                 }
-            },
-        )
-        payload = self._require_mutation_result(data, "pageCreate", "page")
+                """,
+                {"id": page["id"], "page": page_input},
+            )
+            payload = self._require_mutation_result(data, "pageUpdate", "page")
+        else:
+            data = await self._graphql(
+                access_token,
+                shop_domain,
+                """
+                mutation VelnioCreatePage($page: PageCreateInput!) {
+                  pageCreate(page: $page) {
+                    page { id title handle }
+                    userErrors { field message code }
+                  }
+                }
+                """,
+                {"page": page_input},
+            )
+            payload = self._require_mutation_result(data, "pageCreate", "page")
+
         page = payload.get("page")
         if not isinstance(page, dict) or not page.get("id"):
             raise BadGatewayException("Shopify did not return a valid page")
@@ -372,13 +515,16 @@ class RealShopifyProvider(ShopifyProvider):
 
     async def publish_product(self, product, store=None) -> Dict[str, Any]:
         access_token, shop_domain = self._store_credentials(store)
+        ownership_tag = f"velnio-product:{product.id}"
         product_data: Dict[str, Any] = {
             "title": product.name,
             "body_html": product.description or "",
             "vendor": "Velnio",
             "product_type": "General",
             "status": "ACTIVE",
-            "tags": ["velnio", f"velnio-product:{product.id}"],
+            "handle": self._stable_handle("product", product.id),
+            "ownership_tag": ownership_tag,
+            "tags": ["velnio", ownership_tag],
         }
         if product.images:
             product_data["images"] = [
@@ -409,18 +555,21 @@ class RealShopifyProvider(ShopifyProvider):
                 parts.append(f"<p><strong>{offer.bonus_text}</strong></p>")
             if offer.urgency_text:
                 parts.append(f"<p><em>{offer.urgency_text}</em></p>")
-        tags = ["velnio", f"velnio-campaign:{campaign.id}"]
-        if campaign.target_country:
-            tags.append(f"market:{campaign.target_country}")
+
+        ownership_tag = f"velnio-campaign:{campaign.id}"
         product_data: Dict[str, Any] = {
             "title": product_title,
             "body_html": "\n".join(parts) or (product.description or ""),
             "vendor": "Velnio",
             "product_type": "Campaign",
             "status": "ACTIVE",
-            "tags": tags,
+            "handle": self._stable_handle("campaign", campaign.id),
+            "ownership_tag": ownership_tag,
+            "tags": ["velnio", ownership_tag],
             "variants": [],
         }
+        if campaign.target_country:
+            product_data["tags"].append(f"market:{campaign.target_country}")
         if campaign.selling_price:
             product_data["variants"].append(
                 {
@@ -438,6 +587,8 @@ class RealShopifyProvider(ShopifyProvider):
 
         shopify_page_id = shopify_page_handle = shopify_page_url = None
         if landing:
+            page_handle = self._stable_handle("campaign", campaign.id)
+            ownership_marker = f"velnio-campaign:{campaign.id}"
             page = await self.create_page(
                 access_token,
                 shop_domain,
@@ -445,6 +596,8 @@ class RealShopifyProvider(ShopifyProvider):
                     "title": landing.title or product_title,
                     "body_html": renderer.render(landing),
                     "published": True,
+                    "handle": page_handle,
+                    "ownership_marker": ownership_marker,
                 },
             )
             shopify_page_id = str(page["id"])
