@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     SHOPIFY_MODE: str = "mock"
     SHOPIFY_API_KEY: str = ""
     SHOPIFY_API_SECRET: str = ""
-    SHOPIFY_SCOPES: str = "read_products,write_products,write_online_store_pages,read_publications,write_publications"
+    SHOPIFY_SCOPES: str = "write_products,write_online_store_pages,write_publications"
     SHOPIFY_REDIRECT_URI: str = "http://localhost:8000/api/stores/shopify/callback"
     SHOPIFY_API_VERSION: str = "2026-07"
     SHOPIFY_REQUEST_TIMEOUT_SECONDS: float = 15.0
