@@ -1,6 +1,5 @@
 from uuid import UUID
 
-from app.models.google_drive import GoogleDriveConnection
 from app.schemas.google_drive import GoogleDriveFile, GoogleDriveFolder, GoogleDriveSearchResult
 from app.services.google_drive import get_google_drive_provider
 from app.modules.integrations.application.google_drive_connection import GoogleDriveConnectionService
@@ -13,6 +12,10 @@ class GoogleDriveBrowserService:
     @staticmethod
     def _is_folder(mime_type: str) -> bool:
         return mime_type == "application/vnd.google-apps.folder"
+
+    @staticmethod
+    def _escape_query_literal(value: str) -> str:
+        return value.replace("\\", "\\\\").replace("'", "\\'")
 
     def _format_file(self, file_data: dict) -> GoogleDriveFile:
         return GoogleDriveFile(
@@ -59,7 +62,8 @@ class GoogleDriveBrowserService:
     ) -> GoogleDriveSearchResult:
         access_token = await self.connection_service.get_valid_token(workspace_id)
         provider = get_google_drive_provider()
-        search_query = f"name contains '{query}' and trashed=false"
+        escaped_query = self._escape_query_literal(query)
+        search_query = f"name contains '{escaped_query}'"
         data = await provider.list_files(
             access_token=access_token,
             folder_id="root",

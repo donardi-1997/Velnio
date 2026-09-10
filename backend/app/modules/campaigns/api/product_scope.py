@@ -11,6 +11,8 @@ from app.modules.campaigns.application.product_scope import ProductScopedCampaig
 from app.schemas.angle import SellingAngleResponse
 from app.schemas.landing import LandingPageResponse, LandingSectionResponse, LandingSectionUpdate, LandingUpdate
 
+angles_router = APIRouter()
+landings_router = APIRouter()
 router = APIRouter()
 
 
@@ -20,7 +22,7 @@ def get_product_scoped_campaign_service(
     return ProductScopedCampaignService(db)
 
 
-@router.get("/{product_id}/angles", response_model=List[SellingAngleResponse])
+@angles_router.get("/{product_id}/angles", response_model=List[SellingAngleResponse])
 async def list_angles(
     product_id: UUID,
     workspace: Workspace = Depends(get_current_workspace),
@@ -29,7 +31,7 @@ async def list_angles(
     return await service.list_angles(product_id, workspace.id)
 
 
-@router.post("/{product_id}/angles/generate", response_model=List[SellingAngleResponse])
+@angles_router.post("/{product_id}/angles/generate", response_model=List[SellingAngleResponse])
 async def generate_angles(
     product_id: UUID,
     workspace: Workspace = Depends(get_current_workspace),
@@ -38,7 +40,7 @@ async def generate_angles(
     return await service.generate_angles(product_id, workspace.id)
 
 
-@router.post("/{product_id}/angles/{angle_id}/select", response_model=SellingAngleResponse)
+@angles_router.post("/{product_id}/angles/{angle_id}/select", response_model=SellingAngleResponse)
 async def select_angle(
     product_id: UUID,
     angle_id: UUID,
@@ -48,7 +50,7 @@ async def select_angle(
     return await service.select_angle(product_id, angle_id, workspace.id)
 
 
-@router.get("/{product_id}/landing", response_model=LandingPageResponse)
+@landings_router.get("/{product_id}/landing", response_model=LandingPageResponse)
 async def get_landing(
     product_id: UUID,
     workspace: Workspace = Depends(get_current_workspace),
@@ -57,7 +59,7 @@ async def get_landing(
     return await service.get_landing(product_id, workspace.id)
 
 
-@router.post("/{product_id}/landing/generate", response_model=LandingPageResponse)
+@landings_router.post("/{product_id}/landing/generate", response_model=LandingPageResponse)
 async def generate_landing(
     product_id: UUID,
     workspace: Workspace = Depends(get_current_workspace),
@@ -66,7 +68,7 @@ async def generate_landing(
     return await service.generate_landing(product_id, workspace.id)
 
 
-@router.get("/landing-sections/{section_id}", response_model=LandingSectionResponse)
+@landings_router.get("/landing-sections/{section_id}", response_model=LandingSectionResponse)
 async def get_landing_section(
     section_id: UUID,
     workspace: Workspace = Depends(get_current_workspace),
@@ -75,7 +77,7 @@ async def get_landing_section(
     return await service.get_section(section_id, workspace.id)
 
 
-@router.patch("/landing-sections/{section_id}", response_model=LandingSectionResponse)
+@landings_router.patch("/landing-sections/{section_id}", response_model=LandingSectionResponse)
 async def update_landing_section(
     section_id: UUID,
     data: LandingSectionUpdate,
@@ -85,7 +87,7 @@ async def update_landing_section(
     return await service.update_section(section_id, data.content, workspace.id)
 
 
-@router.patch("/landings/{landing_id}", response_model=LandingPageResponse)
+@landings_router.patch("/landings/{landing_id}", response_model=LandingPageResponse)
 async def update_landing(
     landing_id: UUID,
     data: LandingUpdate,
@@ -93,3 +95,7 @@ async def update_landing(
     service: ProductScopedCampaignService = Depends(get_product_scoped_campaign_service),
 ):
     return await service.update_landing(landing_id, data, workspace.id)
+
+
+router.include_router(angles_router)
+router.include_router(landings_router)

@@ -2,7 +2,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_workspace
@@ -31,9 +31,9 @@ class ImportPreviewResponse(BaseModel):
     description: Optional[str] = None
     price: Optional[float] = None
     currency: Optional[str] = "USD"
-    images: List[ImageInfo] = []
-    confidence: dict = {}
-    metadata: dict = {}
+    images: List[ImageInfo] = Field(default_factory=list)
+    confidence: dict = Field(default_factory=dict)
+    metadata: dict = Field(default_factory=dict)
 
 
 class CreateFromImportRequest(BaseModel):
@@ -46,7 +46,7 @@ class CreateFromImportRequest(BaseModel):
     source_type: str = "OTHER"
     source_domain: Optional[str] = None
     source_metadata: Optional[dict] = None
-    images: List[ImageInfo] = []
+    images: List[ImageInfo] = Field(default_factory=list)
     target_country: str = "US"
     target_language: str = "en"
     store_id: Optional[UUID] = None

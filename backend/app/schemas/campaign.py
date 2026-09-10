@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
@@ -35,6 +35,8 @@ class CampaignUpdate(BaseModel):
 
 
 class CampaignResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     workspace_id: UUID
     product_id: Optional[UUID] = None
@@ -58,6 +60,3 @@ class CampaignResponse(BaseModel):
     last_publish_error: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True

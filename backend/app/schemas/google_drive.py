@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
@@ -26,8 +26,8 @@ class GoogleDriveFile(BaseModel):
 class GoogleDriveFolder(BaseModel):
     id: str
     name: str
-    files: List[GoogleDriveFile] = []
-    folders: List[GoogleDriveFile] = []
+    files: List[GoogleDriveFile] = Field(default_factory=list)
+    folders: List[GoogleDriveFile] = Field(default_factory=list)
 
 
 class GoogleDriveSearchResult(BaseModel):
@@ -65,6 +65,8 @@ class GoogleDriveImportResponse(BaseModel):
 
 
 class ProductSourceDocumentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     product_id: UUID
     external_file_id: str
@@ -81,9 +83,6 @@ class ProductSourceDocumentResponse(BaseModel):
     processed_at: Optional[datetime] = None
     error_message: Optional[str] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class GoogleDriveConnectRequest(BaseModel):

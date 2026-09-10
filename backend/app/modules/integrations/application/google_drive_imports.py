@@ -14,7 +14,6 @@ from app.schemas.google_drive import (
     GoogleDriveImportDocumentRequest,
     GoogleDriveImportImageRequest,
     GoogleDriveImportResponse,
-    ProductSourceDocumentResponse,
 )
 from app.services.google_drive import get_google_drive_provider
 from app.services.knowledge.extraction import DocumentExtractionService
@@ -107,7 +106,9 @@ class GoogleDriveImportService:
     ) -> ProductSourceDocument:
         product = await self._require_product(data.product_id, workspace_id)
         if data.campaign_id is not None:
-            await self._require_campaign(data.campaign_id, workspace_id)
+            campaign = await self._require_campaign(data.campaign_id, workspace_id)
+            if campaign.product_id != product.id:
+                raise BadRequestException("Campaign does not belong to the selected product")
 
         provider = get_google_drive_provider()
         access_token = await self.connection_service.get_valid_token(workspace_id)
@@ -180,6 +181,7 @@ class GoogleDriveImportService:
         workspace_id: UUID,
     ) -> GoogleDriveImportResponse:
         campaign = await self._require_campaign(data.campaign_id, workspace_id)
+        product = await self._require_product(campaign.product_id, workspace_id)
         provider = get_google_drive_provider()
         access_token = await self.connection_service.get_valid_token(workspace_id)
         file_data = await provider.get_file(access_token, data.file_id)
@@ -193,10 +195,8 @@ class GoogleDriveImportService:
         storage_key = await storage.save_bytes(content, mime_type or "image/jpeg", f"campaigns/{campaign.id}/assets")
         image_url = storage.get_public_url(storage_key)
 
-        product_result = await self.db.execute(select(Product).where(Product.id == campaign.product_id))
-        product = product_result.scalar_one_or_none()
         image = ProductImage(
-            product_id=product.id if product else None,
+            product_id=product.id,
             campaign_id=campaign.id,
             image_url=image_url,
             image_type=data.purpose,

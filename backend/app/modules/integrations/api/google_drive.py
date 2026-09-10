@@ -44,18 +44,18 @@ async def connect_drive(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await _connection(db).auth_url()
+    return await _connection(db).auth_url(workspace.id, user.id)
 
 
 @router.get("/callback")
 async def handle_drive_callback(
     code: str = Query(...),
     state: str = Query(...),
-    workspace: Workspace = Depends(get_current_workspace),
-    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await _connection(db).connect_from_code(workspace.id, user.id, code)
+    connection = _connection(db)
+    workspace_id, user_id = await connection.validate_oauth_state(state)
+    await connection.connect_from_code(workspace_id, user_id, code)
     return RedirectResponse(url=f"{settings.FRONTEND_URL}/settings?drive=connected")
 
 

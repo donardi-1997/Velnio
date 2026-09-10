@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List, Any
 from uuid import UUID
 from datetime import datetime
@@ -14,6 +14,8 @@ class LandingUpdate(BaseModel):
 
 
 class LandingSectionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     landing_page_id: UUID
     section_type: str
@@ -22,11 +24,10 @@ class LandingSectionResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class LandingPageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     product_id: Optional[UUID] = None
     campaign_id: Optional[UUID] = None
@@ -37,7 +38,4 @@ class LandingPageResponse(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
-    sections: List[LandingSectionResponse] = []
-
-    class Config:
-        from_attributes = True
+    sections: List[LandingSectionResponse] = Field(default_factory=list)

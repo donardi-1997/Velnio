@@ -1,5 +1,10 @@
+from urllib.parse import parse_qs, urlparse
+
 import pytest
 from httpx import AsyncClient
+
+from app.modules.integrations.application.google_drive_browser import GoogleDriveBrowserService
+from app.services.google_drive.real_provider import RealGoogleDriveProvider
 
 
 async def _get_token(client: AsyncClient) -> str:
@@ -342,3 +347,70 @@ async def test_drive_connect_get_auth_url(client: AsyncClient):
     data = response.json()
     assert "auth_url" in data
     assert "state" in data
+
+
+@pytest.mark.asyncio
+async def test_drive_callback_accepts_signed_state_without_bearer(client: AsyncClient):
+    token = await _get_token(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    connect_response = await client.get("/api/google-drive/connect", headers=headers)
+    state = connect_response.json()["state"]
+
+    callback_response = await client.get(
+        "/api/google-drive/callback",
+        params={"code": "mock_code", "state": state},
+        follow_redirects=False,
+    )
+
+    assert callback_response.status_code in {302, 307}
+    status_response = await client.get("/api/google-drive/status", headers=headers)
+    assert status_response.status_code == 200
+    assert status_response.json()["connected"] is True
+
+
+@pytest.mark.asyncio
+async def test_drive_callback_rejects_tampered_state(client: AsyncClient):
+    response = await client.get(
+        "/api/google-drive/callback",
+        params={"code": "mock_code", "state": "tampered-state"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 400
+    assert "oauth state" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_drive_import_document_rejects_campaign_from_other_product(client: AsyncClient):
+    token = await _get_token(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    await client.post("/api/google-drive/connect-mock", headers=headers)
+    first_product_id = await _create_product(client, token)
+    second_product_id = await _create_product(client, token)
+    second_campaign_id = await _create_campaign(client, token, second_product_id)
+
+    response = await client.post(
+        "/api/google-drive/import-document",
+        json={
+            "file_id": "mock_file_004",
+            "product_id": first_product_id,
+            "campaign_id": second_campaign_id,
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    assert "does not belong" in response.json()["detail"].lower()
+
+
+def test_drive_search_escapes_query_literals():
+    assert GoogleDriveBrowserService._escape_query_literal("O'Reilly\\draft") == "O\\'Reilly\\\\draft"
+
+
+@pytest.mark.asyncio
+async def test_real_drive_auth_url_encodes_state():
+    state = "state+with/slashes?and=reserved"
+    url = await RealGoogleDriveProvider().get_auth_url(state)
+    parsed = parse_qs(urlparse(url).query)
+
+    assert parsed["state"] == [state]

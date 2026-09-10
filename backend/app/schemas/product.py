@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
@@ -30,6 +30,8 @@ class ProductUpdate(BaseModel):
 
 
 class ProductImageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     image_url: str
     image_type: str
@@ -42,11 +44,10 @@ class ProductImageResponse(BaseModel):
     external_file_name: Optional[str] = None
     selected: bool = False
 
-    class Config:
-        from_attributes = True
-
 
 class ProductResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     workspace_id: UUID
     store_id: Optional[UUID] = None
@@ -63,7 +64,4 @@ class ProductResponse(BaseModel):
     published_product_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-    images: List[ProductImageResponse] = []
-
-    class Config:
-        from_attributes = True
+    images: List[ProductImageResponse] = Field(default_factory=list)

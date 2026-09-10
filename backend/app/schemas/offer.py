@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
@@ -35,6 +35,8 @@ class OfferUpdate(BaseModel):
 
 
 class OfferResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     campaign_id: UUID
     headline: str
@@ -51,6 +53,3 @@ class OfferResponse(BaseModel):
     bonus_text: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True

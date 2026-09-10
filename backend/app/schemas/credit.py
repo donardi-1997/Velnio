@@ -1,20 +1,21 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
 
 
 class CreditWalletResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     workspace_id: UUID
     balance: float
     lifetime_credits: float
 
-    class Config:
-        from_attributes = True
-
 
 class CreditTransactionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     workspace_id: UUID
     amount: float
@@ -23,6 +24,3 @@ class CreditTransactionResponse(BaseModel):
     reference_type: Optional[str] = None
     reference_id: Optional[UUID] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True

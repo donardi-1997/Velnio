@@ -1,10 +1,12 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
 
 
 class SellingAngleResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     product_id: Optional[UUID] = None
     campaign_id: Optional[UUID] = None
@@ -18,6 +20,3 @@ class SellingAngleResponse(BaseModel):
     position: int
     selected: bool
     created_at: datetime
-
-    class Config:
-        from_attributes = True
