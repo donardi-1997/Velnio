@@ -31,6 +31,26 @@ class GoogleDriveConnection(UUIDMixin, TimestampMixin, Base):
     workspace = relationship("Workspace", back_populates="google_drive_connections")
 
 
+class GoogleDriveOAuthState(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "google_drive_oauth_states"
+
+    workspace_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    nonce_hash = Column(String(64), nullable=False, unique=True, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
+
+
 class ProductSourceDocument(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "product_source_documents"
 
