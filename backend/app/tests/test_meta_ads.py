@@ -29,7 +29,15 @@ async def test_meta_ads_status_not_connected(client: AsyncClient):
     token = await _register(client, "meta-status@test.com")
     response = await client.get("/api/meta-ads/status", headers=_headers(token))
     assert response.status_code == 200
-    assert response.json() == {"connected": False, "expired": False, "meta_user_id": None, "meta_user_name": None, "connected_at": None, "expires_at": None}
+    assert response.json() == {
+        "connected": False,
+        "expired": False,
+        "mode": "mock",
+        "meta_user_id": None,
+        "meta_user_name": None,
+        "connected_at": None,
+        "expires_at": None,
+    }
 
 
 @pytest.mark.asyncio
@@ -45,6 +53,7 @@ async def test_meta_ads_mock_connection_lists_accounts(client: AsyncClient):
     assert status.status_code == 200
     assert status.json()["connected"] is True
     assert status.json()["expired"] is False
+    assert status.json()["mode"] == "mock"
     assert status.json()["meta_user_id"] == "100000000000001"
 
     accounts = await client.get("/api/meta-ads/ad-accounts", headers=headers)
