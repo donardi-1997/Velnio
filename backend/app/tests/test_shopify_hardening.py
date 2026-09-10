@@ -2,6 +2,7 @@ import httpx
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import update as sa_update
+from uuid import UUID
 
 from app.core.encryption import encrypt_value
 from app.core.exceptions import BadGatewayException, BadRequestException
@@ -324,11 +325,12 @@ async def test_campaign_publish_rejects_cross_workspace_store(
         headers=second_headers,
     )
     assert store_response.status_code == 201
-    foreign_store_id = store_response.json()["id"]
+    foreign_store_id = UUID(store_response.json()["id"])
+    campaign_id = UUID(campaign["id"])
 
     await db_session.execute(
         sa_update(Campaign)
-        .where(Campaign.id == campaign["id"])
+        .where(Campaign.id == campaign_id)
         .values(store_id=foreign_store_id)
     )
     await db_session.commit()
