@@ -10,7 +10,7 @@ Velnio is organized as a **modular monolith**. The application is deployed as on
 | `catalog` | Products, product analysis, imports and enrichment |
 | `campaigns` | Campaigns, selling angles, offers, landings, visual assets, publishing, variants and experiments |
 | `commerce` | Stores and Shopify-facing commerce capabilities |
-| `knowledge` | Knowledge sources and campaign briefs/context |
+| `knowledge` | Knowledge sources and campaign context |
 | `integrations` | External non-commerce connectors such as Google Drive |
 | `billing` | Plans, subscriptions, credits and credit ledger |
 | `analytics` | Dashboard, event tracking and campaign performance |
@@ -25,68 +25,63 @@ Legacy route modules are retained only as compatibility shims while callers migr
 
 1. A module may depend on `app.core` and `app.db` infrastructure.
 2. HTTP composition belongs to the owning module.
-3. New business logic lives inside the owning module, not in a global service bucket.
+3. New business logic lives inside the owning module, not in a global route/service bucket.
 4. Cross-module calls use explicit application services/interfaces, never another module's HTTP handlers.
 5. Database migrations remain centralized under Alembic because Velnio is still one deployable and one database.
 6. Public endpoint paths remain backward compatible unless a versioned API change is intentional.
 7. `app.main` must not import individual feature route files.
 8. Routers are adapters: orchestration, credit accounting, persistence workflows and provider calls belong in application/infrastructure layers.
 
-## Target internal shape
+## Internal shape
 
 ```text
 app/
   modules/
-    catalog/
+    <capability>/
       router.py
       api/
       application/
-      domain/
       infrastructure/
-    campaigns/
-      router.py
-      api/
-      application/
-      domain/
-      infrastructure/
+      domain/          # when a dedicated domain boundary is useful
       tests/
-    ...
   core/
   db/
   main.py
 ```
 
-## Campaigns extraction status
+## Extraction status
 
-Campaigns is the first vertically extracted module.
+All initially defined capabilities now own their HTTP composition under `app.modules`:
 
-HTTP ownership is now under `app.modules.campaigns.api` for:
+- `identity` — register/login/refresh, current user and workspace context
+- `catalog` — product CRUD, analysis, import/create/upload and enrichment
+- `campaigns` — CRUD, product-scoped compatibility routes, angles, offers, landings, publishing/readiness, briefs, visual assets, variants and demo flows
+- `commerce` — stores and Shopify product publishing
+- `knowledge` — knowledge-source CRUD, tenant/entity validation, limits and content hashing
+- `billing` — wallet, transactions, plans and subscription lookup
+- `analytics` — dashboard, performance analysis and tracking ingestion
+- `integrations` — Google Drive connection/token lifecycle, browse/search and image/document/asset imports
 
-- campaign CRUD and product-scoped campaign creation/listing
-- selling angles
-- offers
-- campaign landings
-- publishing and publish readiness
-- campaign brief generation
-- visual direction and launch-pack assets
-- A/B landing variants
-- demo event endpoints
+The historical `app/api/routes/*` files for extracted capabilities are compatibility shims only.
 
-Application orchestration now lives under `app.modules.campaigns.application` for:
+## Google Drive integration boundary
 
-- campaign lifecycle (`CampaignService`)
-- angles (`CampaignAngleService`)
-- offers (`CampaignOfferService`)
-- landings (`CampaignLandingService`)
-- publishing (`CampaignPublishingService`)
-- briefs (`CampaignBriefService`)
-- variants (`CampaignVariantService`)
-- visual assets (`CampaignVisualAssetService`)
+Google Drive is split into three application services:
 
-`app/api/routes/campaigns.py`, `publish.py`, `visual_assets.py`, `variants.py`, and `demo.py` are compatibility shims rather than implementation owners.
+- `GoogleDriveConnectionService` — status, connect/disconnect, token exchange and refresh lifecycle
+- `GoogleDriveBrowserService` — browse and search
+- `GoogleDriveImportService` — image, document and campaign-asset imports plus product-document listing
 
-Campaign route-contract tests protect the public surface against missing or duplicated routes during subsequent modular extraction.
+The FastAPI adapter contains only request/response wiring and redirect behavior.
 
-## Next module
+## Verification strategy
 
-The next vertical extraction is `catalog`, beginning with products, product analysis, import and enrichment. Existing public API paths remain unchanged throughout the migration.
+Each extracted module has route-contract coverage where applicable. A global composition contract verifies that the composed API does not contain duplicate method/path pairs and that all primary module prefixes are mounted.
+
+GitHub Actions runs the backend suite with Python 3.12 and mock providers using:
+
+```bash
+pytest app/tests app/modules -q
+```
+
+No schema or Alembic migration change is part of this refactor.
