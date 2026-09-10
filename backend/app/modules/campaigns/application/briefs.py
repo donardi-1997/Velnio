@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.exceptions import BadRequestException, InsufficientCreditsException, NotFoundException
+from app.core.exceptions import InsufficientCreditsException, NotFoundException
 from app.models.brief import CampaignBrief
 from app.models.campaign import Campaign
 from app.models.credit import CreditTransaction, CreditWallet, TransactionType
@@ -45,26 +45,9 @@ class CampaignBriefService:
             workspace_id=workspace_id,
         )
 
-        wallet.balance -= settings.PLAN_BRIEF_COST
-        self.db.add(
-            CreditTransaction(
-                workspace_id=workspace_id,
-                wallet_id=wallet.id,
-                amount=-settings.PLAN_BRIEF_COST,
-                transaction_type=TransactionType.USAGE,
-                description=f"Campaign brief generation for '{campaign.name}'",
-            )
+        brief_data = await get_ai_provider().generate_campaign_brief(
+            product, campaign, knowledge_context
         )
-        await self.db.flush()
-
-        try:
-            brief_data = await get_ai_provider().generate_campaign_brief(
-                product, campaign, knowledge_context
-            )
-        except Exception as exc:
-            wallet.balance += settings.PLAN_BRIEF_COST
-            await self.db.flush()
-            raise BadRequestException(f"Brief generation failed: {str(exc)[:200]}")
 
         result = await self.db.execute(
             select(CampaignBrief).where(CampaignBrief.campaign_id == campaign.id)
@@ -101,6 +84,19 @@ class CampaignBriefService:
                 credit_cost=settings.PLAN_BRIEF_COST,
             )
             self.db.add(brief)
+
+        wallet.balance -= settings.PLAN_BRIEF_COST
+        self.db.add(
+            CreditTransaction(
+                workspace_id=workspace_id,
+                wallet_id=wallet.id,
+                amount=-settings.PLAN_BRIEF_COST,
+                transaction_type=TransactionType.USAGE,
+                description=f"Campaign brief generation for '{campaign.name}'",
+                reference_type="campaign_brief",
+                reference_id=campaign.id,
+            )
+        )
 
         await self.db.flush()
         await self.db.refresh(brief)

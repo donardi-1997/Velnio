@@ -5,7 +5,12 @@ from sqlalchemy import select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.exceptions import BadRequestException, InsufficientCreditsException, NotFoundException
+from app.core.exceptions import (
+    BadGatewayException,
+    BadRequestException,
+    InsufficientCreditsException,
+    NotFoundException,
+)
 from app.core.logging import get_logger
 from app.models.angle import SellingAngle
 from app.models.campaign import CampaignStatus
@@ -98,11 +103,11 @@ class CampaignAngleService:
             for angle in created_angles:
                 await self.db.refresh(angle)
             return created_angles
-        except InsufficientCreditsException:
+        except (InsufficientCreditsException, BadGatewayException):
             raise
         except Exception as exc:
-            logger.error(f"Angle generation failed: {exc}")
-            raise BadRequestException("Angle generation failed. Please try again.")
+            logger.error("Angle generation failed type=%s", type(exc).__name__)
+            raise BadRequestException("Angle generation failed. Please try again.") from exc
 
     async def select(self, campaign_id: UUID, angle_id: UUID, workspace_id: UUID) -> SellingAngle:
         campaign = await self.campaigns.get_for_workspace(campaign_id, workspace_id)

@@ -4,7 +4,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.exceptions import BadRequestException, InsufficientCreditsException, NotFoundException
+from app.core.exceptions import (
+    BadGatewayException,
+    BadRequestException,
+    InsufficientCreditsException,
+    NotFoundException,
+)
 from app.core.logging import get_logger
 from app.models.analysis import ProductAnalysis
 from app.models.angle import SellingAngle
@@ -109,8 +114,8 @@ class CampaignLandingService:
             await self.db.flush()
             await self.db.refresh(landing)
             return landing
-        except InsufficientCreditsException:
+        except (InsufficientCreditsException, BadGatewayException):
             raise
         except Exception as exc:
-            logger.error(f"Landing generation failed: {exc}")
-            raise BadRequestException("Landing generation failed. Please try again.")
+            logger.error("Landing generation failed type=%s", type(exc).__name__)
+            raise BadRequestException("Landing generation failed. Please try again.") from exc

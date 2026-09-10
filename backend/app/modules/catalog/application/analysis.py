@@ -5,7 +5,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.exceptions import BadRequestException, InsufficientCreditsException, NotFoundException
+from app.core.exceptions import (
+    BadGatewayException,
+    BadRequestException,
+    InsufficientCreditsException,
+    NotFoundException,
+)
 from app.core.logging import get_logger
 from app.models.analysis import ProductAnalysis
 from app.models.credit import CreditTransaction, CreditWallet, TransactionType
@@ -85,10 +90,10 @@ class ProductAnalysisService:
             await self.db.flush()
             await self.db.refresh(analysis)
             return analysis
-        except InsufficientCreditsException:
+        except (InsufficientCreditsException, BadGatewayException):
             raise
         except Exception as exc:
-            logger.error(f"Analysis failed: {exc}")
+            logger.error("Analysis failed type=%s", type(exc).__name__)
             product.status = ProductStatus.FAILED
             await self.db.flush()
-            raise BadRequestException("Analysis failed. Please try again.")
+            raise BadRequestException("Analysis failed. Please try again.") from exc

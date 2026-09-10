@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     AI_PROVIDER: str = "mock"
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
+    AI_REQUEST_TIMEOUT_SECONDS: float = 30.0
 
     SHOPIFY_MODE: str = "mock"
     SHOPIFY_API_KEY: str = ""
