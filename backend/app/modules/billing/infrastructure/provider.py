@@ -151,7 +151,10 @@ class StripeBillingProvider:
             )
         except Exception as exc:
             raise BadRequestException("Invalid billing webhook signature") from exc
-        event_dict = dict(event)
+
+        event_dict = event.to_dict()
+        if not isinstance(event_dict, dict):
+            raise BadRequestException("Invalid billing webhook payload")
         if not isinstance(event_dict.get("id"), str) or not isinstance(event_dict.get("type"), str):
             raise BadRequestException("Invalid billing webhook payload")
         return event_dict
