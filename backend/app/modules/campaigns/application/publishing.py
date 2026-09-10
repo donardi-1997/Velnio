@@ -217,7 +217,13 @@ class CampaignPublishingService:
     async def publish(self, campaign_id: UUID, workspace_id: UUID) -> dict:
         campaign = await self._get_campaign(campaign_id, workspace_id, for_update=True)
 
-        if campaign.status == CampaignStatus.PUBLISHED and campaign.external_product_id:
+        # Real Shopify republishes must reconcile tracking instrumentation and the
+        # order webhook. Mock mode keeps the historical idempotent short-circuit.
+        if (
+            campaign.status == CampaignStatus.PUBLISHED
+            and campaign.external_product_id
+            and settings.SHOPIFY_MODE != "real"
+        ):
             return {
                 "status": "published",
                 "provider": "existing",
