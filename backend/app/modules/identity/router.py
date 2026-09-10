@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import auth, workspace
+from app.modules.identity.api import auth, workspace
 
 router = APIRouter()
 router.include_router(auth.router, prefix="/auth", tags=["auth"])
