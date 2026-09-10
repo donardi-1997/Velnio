@@ -1,7 +1,7 @@
 """knowledge sources and campaign briefs
 
 Revision ID: 006
-Revises: 005
+Revises: 005_google_drive
 Create Date: 2026-08-31
 """
 from alembic import op
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision = '006'
-down_revision = '005'
+down_revision = '005_google_drive'
 branch_labels = None
 depends_on = None
 
