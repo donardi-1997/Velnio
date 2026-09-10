@@ -23,7 +23,7 @@ export function useRegister() {
       api.auth.register(data),
     onSuccess: (data) => {
       setTokens(data.access_token, data.refresh_token)
-      navigate('/dashboard')
+      navigate('/onboarding')
     },
   })
 }
