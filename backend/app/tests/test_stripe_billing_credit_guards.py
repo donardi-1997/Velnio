@@ -5,12 +5,10 @@ import time
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.plan import Plan
-from app.models.workspace import WorkspaceMember
 from app.modules.billing.infrastructure.provider import StripeBillingProvider
 
 
@@ -26,7 +24,7 @@ async def _seed_plans(db: AsyncSession) -> None:
     await db.commit()
 
 
-async def _register(client: AsyncClient, email: str) -> tuple[dict, str]:
+async def _register(client: AsyncClient, email: str) -> dict:
     response = await client.post(
         "/api/auth/register",
         json={
@@ -38,7 +36,13 @@ async def _register(client: AsyncClient, email: str) -> tuple[dict, str]:
     )
     assert response.status_code == 201
     token = response.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}, token
+    return {"Authorization": f"Bearer {token}"}
+
+
+async def _workspace_id(client: AsyncClient, headers: dict) -> str:
+    response = await client.get("/api/workspace", headers=headers)
+    assert response.status_code == 200
+    return response.json()["id"]
 
 
 def _signature(payload: bytes, secret: str) -> str:
@@ -76,9 +80,8 @@ async def test_trial_plan_change_does_not_allocate_trial_credits_twice(
     monkeypatch: pytest.MonkeyPatch,
 ):
     await _seed_plans(db_session)
-    headers, _ = await _register(client, "trial-switch@test.com")
-    membership = (await db_session.execute(select(WorkspaceMember))).scalar_one()
-    workspace_id = str(membership.workspace_id)
+    headers = await _register(client, "trial-switch@test.com")
+    workspace_id = await _workspace_id(client, headers)
 
     monkeypatch.setattr(settings, "BILLING_PROVIDER", "stripe")
     monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_velnio")
@@ -119,9 +122,8 @@ async def test_proration_invoice_does_not_allocate_monthly_credits(
     monkeypatch: pytest.MonkeyPatch,
 ):
     await _seed_plans(db_session)
-    headers, _ = await _register(client, "proration@test.com")
-    membership = (await db_session.execute(select(WorkspaceMember))).scalar_one()
-    workspace_id = str(membership.workspace_id)
+    headers = await _register(client, "proration@test.com")
+    workspace_id = await _workspace_id(client, headers)
 
     monkeypatch.setattr(settings, "BILLING_PROVIDER", "stripe")
     monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_velnio")
