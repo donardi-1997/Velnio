@@ -1,5 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from pydantic import BaseModel, ConfigDict, Field
 from uuid import UUID
 
 
@@ -26,11 +25,10 @@ class TokenRefresh(BaseModel):
 
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     email: str
     first_name: str
     last_name: str
     is_active: bool
-
-    class Config:
-        from_attributes = True
