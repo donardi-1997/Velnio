@@ -12,16 +12,20 @@ from app.modules.campaigns.api import (
     visual_assets,
 )
 
-# This router owns the /campaigns prefix itself so route modules may safely
-# declare collection operations at path "" without FastAPI rejecting the
-# intermediate router composition.
-router = APIRouter(prefix="/campaigns")
-router.include_router(campaigns.router)
-router.include_router(angles.router)
-router.include_router(offers.router)
-router.include_router(landings.router)
-router.include_router(publishing.router)
-router.include_router(briefs.router)
-router.include_router(visual_assets.router)
-router.include_router(variants.router)
-router.include_router(demo.router)
+router = APIRouter()
+
+# Apply the public /campaigns prefix at each include boundary. FastAPI validates
+# empty collection paths ("") against the prefix passed to include_router, so
+# relying on a parent router prefix is insufficient for campaigns.router.
+for feature_router in (
+    campaigns.router,
+    angles.router,
+    offers.router,
+    landings.router,
+    publishing.router,
+    briefs.router,
+    visual_assets.router,
+    variants.router,
+    demo.router,
+):
+    router.include_router(feature_router, prefix="/campaigns")
