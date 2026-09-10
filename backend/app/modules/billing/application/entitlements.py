@@ -1,12 +1,23 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID
 
+from app.core.config import settings
 from app.core.exceptions import PlanLimitException
 from app.models.plan import Plan
 from app.models.subscription import SubscriptionStatus
 from app.modules.billing.infrastructure.repository import BillingRepository
+
+
+@dataclass(frozen=True)
+class EffectivePlan:
+    code: str
+    name: str
+    included_credits: int
+    max_stores: int
+    max_products_per_month: int
 
 
 class EntitlementService:
@@ -15,7 +26,7 @@ class EntitlementService:
     def __init__(self, repository: BillingRepository) -> None:
         self.repository = repository
 
-    async def effective_plan(self, workspace_id: UUID) -> tuple[Plan, str]:
+    async def effective_plan(self, workspace_id: UUID) -> tuple[Plan | EffectivePlan, str]:
         subscription = await self.repository.get_subscription(workspace_id)
         if (
             subscription is not None
@@ -25,10 +36,20 @@ class EntitlementService:
             return subscription.plan, subscription.status.value
 
         free_plan = await self.repository.get_plan_by_code("FREE")
-        if free_plan is None:
-            raise PlanLimitException("No active plan is available for this workspace")
+        if free_plan is not None:
+            status = subscription.status.value if subscription is not None else "NONE"
+            return free_plan, status
+
+        # Conservative bootstrap fallback for unseeded development/test databases.
+        # Production should normally have the FREE plan from migrations/seed data.
         status = subscription.status.value if subscription is not None else "NONE"
-        return free_plan, status
+        return EffectivePlan(
+            code="FREE",
+            name="Free",
+            included_credits=settings.FREE_CREDITS,
+            max_stores=1,
+            max_products_per_month=2,
+        ), status
 
     @staticmethod
     def _month_window(now: datetime | None = None) -> tuple[datetime, datetime]:
