@@ -6,6 +6,7 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.credit import CreditTransaction, CreditWallet, TransactionType
 from app.models.plan import Plan
@@ -45,23 +46,25 @@ class BillingRepository:
 
     async def get_subscription(self, workspace_id: UUID) -> Subscription | None:
         result = await self.db.execute(
-            select(Subscription).where(Subscription.workspace_id == workspace_id)
+            select(Subscription)
+            .options(selectinload(Subscription.plan))
+            .where(Subscription.workspace_id == workspace_id)
         )
         return result.scalar_one_or_none()
 
     async def get_subscription_by_provider_id(self, provider_subscription_id: str) -> Subscription | None:
         result = await self.db.execute(
-            select(Subscription).where(
-                Subscription.provider_subscription_id == provider_subscription_id
-            )
+            select(Subscription)
+            .options(selectinload(Subscription.plan))
+            .where(Subscription.provider_subscription_id == provider_subscription_id)
         )
         return result.scalar_one_or_none()
 
     async def get_subscription_by_customer_id(self, provider_customer_id: str) -> Subscription | None:
         result = await self.db.execute(
-            select(Subscription).where(
-                Subscription.provider_customer_id == provider_customer_id
-            )
+            select(Subscription)
+            .options(selectinload(Subscription.plan))
+            .where(Subscription.provider_customer_id == provider_customer_id)
         )
         return result.scalar_one_or_none()
 
