@@ -123,6 +123,7 @@ export const api = {
     generateVisualDirection: (campaignId: string) => request<any>(`/campaigns/${campaignId}/visual-direction/generate`, { method: 'POST' }),
     getVisualDirection: (campaignId: string) => request<any>(`/campaigns/${campaignId}/visual-direction`),
     generateAssets: (campaignId: string) => request<any>(`/campaigns/${campaignId}/assets/generate`, { method: 'POST', body: JSON.stringify({ preset: 'launch_pack' }) }),
+    regenerateAsset: (campaignId: string, imageId: string, instructions?: string) => request<any>(`/campaigns/${campaignId}/assets/${imageId}/regenerate`, { method: 'POST', body: JSON.stringify(instructions ? { instructions } : {}) }),
     selectAsset: (campaignId: string, imageId: string, purpose: string) => request<any>(`/campaigns/${campaignId}/assets/${imageId}/select?purpose=${purpose}`, { method: 'POST' }),
     getPublishReadiness: (campaignId: string) => request<any>(`/campaigns/${campaignId}/publish-readiness`),
   },

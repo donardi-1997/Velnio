@@ -25,7 +25,14 @@ class OpenAIImageProvider(ImageGenerationProvider):
             image_data = data["data"][0]
             url = image_data.get("url") or image_data.get("b64_json")
             width, height = (int(x) for x in size.split("x"))
-            return {"image_url": url, "width": width, "height": height}
+            return {
+                "image_url": url,
+                "width": width,
+                "height": height,
+                "prompt": prompt,
+                "provider": "openai",
+                "model": self.model,
+            }
 
     async def generate_product_image(
         self, product: Any, purpose: str, prompt: str, visual_direction: Optional[Any] = None
@@ -44,7 +51,7 @@ class OpenAIImageProvider(ImageGenerationProvider):
         self, product: Any, campaign: Any, angle: str, visual_direction: Optional[Any] = None
     ) -> Dict[str, Any]:
         logger.info(f"[openai] Generating problem/solution image angle={angle}")
-        prompt = f"A split comparison image showing a problem on the left and the solution with {getattr(product, 'name', 'product')} on the right. {angle}. Clean, modern marketing style."
+        prompt = f"A split comparison image showing a problem on the left and the solution with {getattr(product, 'name', 'product')} on the right. {self._angle_text(angle)}. Clean, modern marketing style."
         return await self._generate(prompt, size="1792x1024")
 
     async def generate_campaign_asset(
@@ -54,16 +61,68 @@ class OpenAIImageProvider(ImageGenerationProvider):
         prompt = self._build_campaign_prompt(product, campaign, angle, offer, visual_direction, purpose)
         return await self._generate(prompt, size="1792x1024")
 
+    @staticmethod
+    def _angle_text(angle: Any) -> str:
+        if angle is None:
+            return ""
+        parts = [
+            getattr(angle, "name", None),
+            getattr(angle, "hook", None),
+            getattr(angle, "main_promise", None),
+        ]
+        text = ". ".join(str(part).strip() for part in parts if part)
+        return text or str(angle)
+
+    @staticmethod
+    def _offer_text(offer: Any) -> str:
+        if offer is None:
+            return ""
+        parts = [
+            getattr(offer, "headline", None),
+            getattr(offer, "urgency_text", None),
+            getattr(offer, "scarcity_text", None),
+            getattr(offer, "bonus_text", None),
+        ]
+        text = ". ".join(str(part).strip() for part in parts if part)
+        return text or str(offer)
+
+    @staticmethod
+    def _visual_direction_text(visual_direction: Optional[Any]) -> str:
+        if not visual_direction:
+            return ""
+        fields = (
+            ("Style", "visual_style"),
+            ("Tone", "tone"),
+            ("Colors", "color_notes"),
+            ("Background", "background_style"),
+            ("Photography", "photography_style"),
+            ("Audience context", "audience_context"),
+            ("Additional instructions", "additional_instructions"),
+        )
+        notes = [
+            f"{label}: {value}"
+            for label, attribute in fields
+            if (value := getattr(visual_direction, attribute, None))
+        ]
+        return ". ".join(notes)
+
     def _build_lifestyle_prompt(self, product: Any, campaign: Any, angle: str, visual_direction: Optional[Any]) -> str:
         name = getattr(product, "name", "product")
-        style_notes = ""
-        if visual_direction:
-            style_notes = f" Style: {getattr(visual_direction, 'visual_style', '')}. Tone: {getattr(visual_direction, 'tone', '')}."
-        return f"Lifestyle photography of {name} in a real-life setting. Selling angle: {angle}.{style_notes} Professional product photography, natural lighting."
+        direction = self._visual_direction_text(visual_direction)
+        direction_suffix = f" Visual direction: {direction}." if direction else ""
+        return (
+            f"Lifestyle photography of {name} in a real-life setting. "
+            f"Selling angle: {self._angle_text(angle)}.{direction_suffix} "
+            "Professional product photography, natural lighting."
+        )
 
     def _build_campaign_prompt(self, product: Any, campaign: Any, angle: str, offer: str, visual_direction: Optional[Any], purpose: str) -> str:
         name = getattr(product, "name", "product")
-        style_notes = ""
-        if visual_direction:
-            style_notes = f" Style: {getattr(visual_direction, 'visual_style', '')}. Tone: {getattr(visual_direction, 'tone', '')}."
-        return f"Marketing {purpose.lower()} image for {name}. Angle: {angle}. Offer: {offer}.{style_notes} Professional advertising imagery, high quality."
+        direction = self._visual_direction_text(visual_direction)
+        direction_suffix = f" Visual direction: {direction}." if direction else ""
+        return (
+            f"Marketing {purpose.lower()} image for {name}. "
+            f"Selling angle: {self._angle_text(angle)}. "
+            f"Offer: {self._offer_text(offer)}.{direction_suffix} "
+            "Professional advertising imagery, high quality."
+        )
