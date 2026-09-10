@@ -1,5 +1,7 @@
 import hashlib
 from typing import Any, Dict, Optional
+from uuid import uuid4
+
 from app.services.images.base import ImageGenerationProvider
 from app.core.logging import get_logger
 
@@ -47,7 +49,10 @@ class MockImageProvider(ImageGenerationProvider):
         self, product: Any, campaign: Any, angle: str, offer: str, visual_direction: Optional[Any] = None, purpose: str = "HERO"
     ) -> Dict[str, Any]:
         product_id = str(getattr(product, "id", "unknown"))
-        h = hashlib.md5(f"{product_id}:{purpose}:{angle}:{offer}".encode()).hexdigest()[:12]
+        generation_id = uuid4().hex
+        h = hashlib.md5(
+            f"{product_id}:{purpose}:{angle}:{offer}:{generation_id}".encode()
+        ).hexdigest()[:12]
         logger.info(f"[mock] Generating campaign asset purpose={purpose} hash={h}")
         return {
             "image_url": f"/storage/mock/{purpose}_{h}.png",
