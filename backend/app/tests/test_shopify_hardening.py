@@ -1,9 +1,11 @@
 import httpx
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import update as sa_update
 
 from app.core.encryption import encrypt_value
 from app.core.exceptions import BadGatewayException, BadRequestException
+from app.models.campaign import Campaign
 from app.models.store import Store, StoreStatus
 from app.services.shopify.real_provider import RealShopifyProvider
 
@@ -19,6 +21,26 @@ async def _register(client: AsyncClient, email: str) -> dict:
         },
     )
     assert response.status_code == 201
+    return response.json()
+
+
+async def _create_product(client: AsyncClient, headers: dict, name: str) -> dict:
+    response = await client.post(
+        "/api/products",
+        json={"name": name, "selling_price": 29.99},
+        headers=headers,
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+async def _create_campaign(client: AsyncClient, headers: dict, product_id: str, name: str) -> dict:
+    response = await client.post(
+        f"/api/campaigns/by-product/{product_id}",
+        json={"name": name},
+        headers=headers,
+    )
+    assert response.status_code in {200, 201}
     return response.json()
 
 
@@ -183,13 +205,8 @@ async def test_real_shopify_invalid_json_is_sanitized(monkeypatch: pytest.Monkey
 async def test_product_publish_is_idempotent(client: AsyncClient, monkeypatch: pytest.MonkeyPatch):
     auth = await _register(client, "shopify-product-idempotency@test.com")
     headers = {"Authorization": f"Bearer {auth['access_token']}"}
-    product_response = await client.post(
-        "/api/products",
-        json={"name": "Idempotent Product", "selling_price": 29.99},
-        headers=headers,
-    )
-    assert product_response.status_code == 201
-    product_id = product_response.json()["id"]
+    product = await _create_product(client, headers, "Idempotent Product")
+    product_id = product["id"]
 
     calls = {"count": 0}
 
@@ -225,12 +242,8 @@ async def test_product_publish_sanitizes_unexpected_provider_error(
 ):
     auth = await _register(client, "shopify-product-error@test.com")
     headers = {"Authorization": f"Bearer {auth['access_token']}"}
-    product_response = await client.post(
-        "/api/products",
-        json={"name": "Provider Error Product"},
-        headers=headers,
-    )
-    product_id = product_response.json()["id"]
+    product = await _create_product(client, headers, "Provider Error Product")
+    product_id = product["id"]
 
     class FailingProvider:
         async def publish_product(self, product, store=None):
@@ -246,3 +259,84 @@ async def test_product_publish_sanitizes_unexpected_provider_error(
     assert response.status_code == 502
     assert response.json()["detail"] == "Shopify publish failed; try again"
     assert "do-not-leak" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_campaign_publish_is_idempotent(client: AsyncClient, monkeypatch: pytest.MonkeyPatch):
+    auth = await _register(client, "shopify-campaign-idempotency@test.com")
+    headers = {"Authorization": f"Bearer {auth['access_token']}"}
+    product = await _create_product(client, headers, "Campaign Product")
+    campaign = await _create_campaign(client, headers, product["id"], "Campaign Idempotency")
+
+    calls = {"count": 0}
+
+    class CountingProvider:
+        async def publish_campaign(self, campaign, product, store, angle, landing, offer):
+            calls["count"] += 1
+            return {
+                "provider": "test",
+                "shopify_product_id": "remote-campaign-product-123",
+                "shopify_page_id": "remote-page-123",
+            }
+
+    monkeypatch.setattr(
+        "app.modules.campaigns.application.publishing.get_shopify_provider",
+        lambda: CountingProvider(),
+    )
+
+    first = await client.post(f"/api/campaigns/{campaign['id']}/publish", headers=headers)
+    second = await client.post(f"/api/campaigns/{campaign['id']}/publish", headers=headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["shopify_product_id"] == "remote-campaign-product-123"
+    assert second.json()["shopify_product_id"] == "remote-campaign-product-123"
+    assert second.json()["shopify_page_id"] == "remote-page-123"
+    assert second.json()["provider"] == "existing"
+    assert calls["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_campaign_publish_rejects_cross_workspace_store(
+    client: AsyncClient,
+    db_session,
+):
+    first_auth = await _register(client, "shopify-owner-one@test.com")
+    first_headers = {"Authorization": f"Bearer {first_auth['access_token']}"}
+    first_product = await _create_product(client, first_headers, "Workspace One Product")
+    campaign = await _create_campaign(
+        client,
+        first_headers,
+        first_product["id"],
+        "Workspace One Campaign",
+    )
+
+    second_auth = await _register(client, "shopify-owner-two@test.com")
+    second_headers = {"Authorization": f"Bearer {second_auth['access_token']}"}
+    store_response = await client.post(
+        "/api/stores/mock-connect",
+        json={
+            "name": "Workspace Two Store",
+            "shop_domain": "workspace-two.myshopify.com",
+            "country": "US",
+            "currency": "USD",
+        },
+        headers=second_headers,
+    )
+    assert store_response.status_code == 201
+    foreign_store_id = store_response.json()["id"]
+
+    await db_session.execute(
+        sa_update(Campaign)
+        .where(Campaign.id == campaign["id"])
+        .values(store_id=foreign_store_id)
+    )
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/campaigns/{campaign['id']}/publish",
+        headers=first_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Store not found"
