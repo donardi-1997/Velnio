@@ -38,9 +38,10 @@ def upgrade() -> None:
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
 
+    # PostgreSQL Enum objects attached to create_table create their backing
+    # types automatically. Creating them manually first caused duplicate-type
+    # failures on an empty database.
     member_role = sa.Enum('owner', 'admin', 'member', name='member_role')
-    member_role.create(op.get_bind(), checkfirst=True)
-
     op.create_table(
         'workspace_members',
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
@@ -52,10 +53,7 @@ def upgrade() -> None:
     )
 
     store_platform = sa.Enum('SHOPIFY', name='store_platform')
-    store_platform.create(op.get_bind(), checkfirst=True)
     store_status = sa.Enum('DISCONNECTED', 'PENDING', 'CONNECTED', 'ERROR', name='store_status')
-    store_status.create(op.get_bind(), checkfirst=True)
-
     op.create_table(
         'stores',
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
@@ -72,10 +70,7 @@ def upgrade() -> None:
     )
 
     source_type = sa.Enum('MANUAL', 'ALIEXPRESS', 'AMAZON', 'CJ', 'OTHER', name='source_type')
-    source_type.create(op.get_bind(), checkfirst=True)
     product_status = sa.Enum('DRAFT', 'ANALYZING', 'ANALYZED', 'READY', 'PUBLISHED', 'FAILED', name='product_status')
-    product_status.create(op.get_bind(), checkfirst=True)
-
     op.create_table(
         'products',
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
@@ -147,8 +142,6 @@ def upgrade() -> None:
     )
 
     landing_status = sa.Enum('DRAFT', 'GENERATING', 'READY', 'PUBLISHED', 'FAILED', name='landing_status')
-    landing_status.create(op.get_bind(), checkfirst=True)
-
     op.create_table(
         'landing_pages',
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
@@ -198,8 +191,6 @@ def upgrade() -> None:
     )
 
     transaction_type = sa.Enum('ALLOCATION', 'USAGE', 'PURCHASE', 'REFUND', 'ADJUSTMENT', name='transaction_type')
-    transaction_type.create(op.get_bind(), checkfirst=True)
-
     op.create_table(
         'credit_transactions',
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
@@ -215,8 +206,6 @@ def upgrade() -> None:
     )
 
     subscription_status = sa.Enum('ACTIVE', 'CANCELED', 'PAST_DUE', 'TRIALING', name='subscription_status')
-    subscription_status.create(op.get_bind(), checkfirst=True)
-
     op.create_table(
         'subscriptions',
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
