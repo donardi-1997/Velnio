@@ -1,5 +1,5 @@
 import uuid
-from typing import Any, Dict
+from typing import Any, Dict, Mapping
 
 from app.core.logging import get_logger
 from app.services.shopify.base import ShopifyProvider
@@ -8,15 +8,24 @@ logger = get_logger(__name__)
 
 
 class MockShopifyProvider(ShopifyProvider):
-    def get_install_url(self) -> str:
-        return "https://mock-shop.myshopify.com/admin/oauth/authorize?mock=true"
+    def get_install_url(self, shop_domain: str, state: str) -> str:
+        return f"https://{shop_domain}/admin/oauth/authorize?mock=true&state={state}"
 
-    async def handle_callback(self, code: str, shop: str) -> Dict[str, Any]:
+    def verify_callback_hmac(self, query_params: Mapping[str, str]) -> None:
+        return None
+
+    async def exchange_code(self, code: str, shop_domain: str) -> Dict[str, Any]:
         return {
             "access_token": f"mock_token_{uuid.uuid4().hex[:8]}",
-            "shop": shop,
+            "refresh_token": f"mock_refresh_{uuid.uuid4().hex[:8]}",
+            "expires_in": 3600,
+            "refresh_token_expires_in": 7776000,
+            "shop": shop_domain,
             "scope": "read_products,write_products",
         }
+
+    async def refresh_access_token(self, refresh_token: str, shop_domain: str) -> Dict[str, Any]:
+        return await self.exchange_code("refresh", shop_domain)
 
     async def get_shop(self, access_token: str, shop_domain: str = "") -> Dict[str, Any]:
         return {
@@ -24,6 +33,7 @@ class MockShopifyProvider(ShopifyProvider):
             "domain": shop_domain or "mock-shop.myshopify.com",
             "email": "admin@mock-shop.com",
             "currency": "USD",
+            "country_code": "US",
         }
 
     async def create_product(
