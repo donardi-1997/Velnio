@@ -40,9 +40,9 @@ async def seed():
 
         plans = [
             Plan(id=uuid.uuid4(), code="FREE", name="Free", monthly_price=0, included_credits=10, max_stores=1, max_products_per_month=2),
-            Plan(id=uuid.uuid4(), code="LAUNCH", name="Launch", monthly_price=19, included_credits=100, max_stores=1, max_products_per_month=10),
-            Plan(id=uuid.uuid4(), code="GROWTH", name="Growth", monthly_price=49, included_credits=400, max_stores=3, max_products_per_month=30),
-            Plan(id=uuid.uuid4(), code="SCALE", name="Scale", monthly_price=99, included_credits=1200, max_stores=10, max_products_per_month=100),
+            Plan(id=uuid.uuid4(), code="LAUNCH", name="Starter", monthly_price=29, included_credits=100, max_stores=1, max_products_per_month=10),
+            Plan(id=uuid.uuid4(), code="GROWTH", name="Growth", monthly_price=79, included_credits=400, max_stores=3, max_products_per_month=30),
+            Plan(id=uuid.uuid4(), code="SCALE", name="Scale", monthly_price=149, included_credits=1200, max_stores=10, max_products_per_month=100),
         ]
         for p in plans:
             db.add(p)
