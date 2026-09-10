@@ -11,6 +11,7 @@ bcrypt==4.2.0
 python-multipart==0.0.19
 httpx==0.28.1
 openai==3.11.0
+stripe==15.6.1
 pytest==8.3.4
 pytest-asyncio==0.25.0
 python-dotenv==1.0.1
