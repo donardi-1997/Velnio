@@ -1,6 +1,6 @@
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
-from app.models.store import Store
+from app.models.store import ShopifyOAuthState, Store
 from app.models.product import Product, ProductImage
 from app.models.campaign import Campaign
 from app.models.analysis import ProductAnalysis
@@ -19,7 +19,7 @@ from app.models.brief import CampaignBrief
 
 __all__ = [
     "User", "Workspace", "WorkspaceMember",
-    "Store", "Product", "ProductImage",
+    "Store", "ShopifyOAuthState", "Product", "ProductImage",
     "Campaign", "ProductAnalysis", "SellingAngle",
     "LandingPage", "LandingSection", "Offer",
     "CreditWallet", "CreditTransaction",
