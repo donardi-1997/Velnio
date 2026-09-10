@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     SHOPIFY_API_VERSION: str = "2024-10"
 
     BILLING_PROVIDER: str = "mock"
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PRICE_STARTER: str = ""
+    STRIPE_PRICE_GROWTH: str = ""
+    STRIPE_PRICE_SCALE: str = ""
+    STRIPE_TRIAL_DAYS: int = 7
+    STRIPE_REQUEST_TIMEOUT_SECONDS: float = 20.0
 
     FRONTEND_URL: str = "http://localhost:5173"
 
