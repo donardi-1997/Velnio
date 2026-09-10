@@ -8,7 +8,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.exceptions import BadRequestException, InsufficientCreditsException, NotFoundException
+from app.core.exceptions import (
+    BadGatewayException,
+    BadRequestException,
+    InsufficientCreditsException,
+    NotFoundException,
+)
 from app.core.logging import get_logger
 from app.models.campaign import Campaign
 from app.models.credit import CreditTransaction, CreditWallet, TransactionType
@@ -140,8 +145,8 @@ class PerformanceService:
                 "based_on_sessions": insight.based_on_sessions,
                 "generated_at": insight.generated_at.isoformat() if insight.generated_at else None,
             }
-        except (InsufficientCreditsException, HTTPException):
+        except (InsufficientCreditsException, HTTPException, BadGatewayException):
             raise
         except Exception as exc:
-            logger.error(f"Performance analysis failed: {exc}")
-            raise BadRequestException("Performance analysis failed. Please try again.")
+            logger.error("Performance analysis failed type=%s", type(exc).__name__)
+            raise BadRequestException("Performance analysis failed. Please try again.") from exc
