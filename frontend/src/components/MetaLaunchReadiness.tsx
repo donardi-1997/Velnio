@@ -43,7 +43,7 @@ export function MetaLaunchReadiness({ campaignId, publicationId, ad }: MetaLaunc
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['meta-ads-ads', campaignId, publicationId] })
-      queryClient.invalidateQueries({ queryKey: ['meta-ad-live-state', campaignId, publicationId, ad.id] })
+      queryClient.invalidateQueries({ queryKey: ['meta-ads-ad-remote-state', campaignId, publicationId, ad.id] })
       setSpendAcknowledged(false)
     },
   })
