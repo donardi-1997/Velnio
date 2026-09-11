@@ -14,6 +14,7 @@ from app.modules.campaigns.application.meta_ads_publishing import MetaAdsCampaig
 
 
 router = APIRouter()
+MAX_SAFE_DAILY_BUDGET_MINOR = 9_007_199_254_740_991
 
 
 class MetaCampaignPublishRequest(BaseModel):
@@ -27,7 +28,7 @@ class MetaDeliveryConfigRequest(BaseModel):
 
 
 class MetaAdSetPublishRequest(BaseModel):
-    daily_budget_minor: int = Field(gt=0)
+    daily_budget_minor: int = Field(gt=0, le=MAX_SAFE_DAILY_BUDGET_MINOR)
     target_country: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$", max_length=2)
 
 
