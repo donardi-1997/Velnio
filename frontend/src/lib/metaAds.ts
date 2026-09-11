@@ -19,7 +19,7 @@ export interface MetaAdAccount {
   timezone_name: string | null
 }
 
-export interface MetaCampaignPublication {
+export interface MetaAdsCampaignPublication {
   id: string
   campaign_id: string
   ad_account_id: string
@@ -38,9 +38,9 @@ export const metaAdsApi = {
   disconnect: () => request<{ disconnected: boolean }>('/meta-ads/disconnect', { method: 'POST' }),
   adAccounts: () => request<MetaAdAccount[]>('/meta-ads/ad-accounts'),
   campaignPublications: (campaignId: string) =>
-    request<MetaCampaignPublication[]>(`/campaigns/${campaignId}/meta-ads/publications`),
-  publishCampaign: (campaignId: string, adAccountId: string) =>
-    request<MetaCampaignPublication>(`/campaigns/${campaignId}/meta-ads/publish`, {
+    request<MetaAdsCampaignPublication[]>(`/campaigns/${campaignId}/meta-ads/publications`),
+  publishCampaignPaused: (campaignId: string, adAccountId: string) =>
+    request<MetaAdsCampaignPublication>(`/campaigns/${campaignId}/meta-ads/publish`, {
       method: 'POST',
       body: JSON.stringify({ ad_account_id: adAccountId }),
     }),
