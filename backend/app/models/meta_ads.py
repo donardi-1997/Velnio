@@ -257,3 +257,13 @@ class MetaAdsLaunchIntent(UUIDMixin, TimestampMixin, Base):
     readiness_fingerprint = Column(String(64), nullable=False, index=True)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     consumed_at = Column(DateTime(timezone=True), nullable=True)
+    activation_status = Column(
+        String(32),
+        nullable=False,
+        default="PENDING_CONFIRMATION",
+        server_default="PENDING_CONFIRMATION",
+        index=True,
+    )
+    activation_started_at = Column(DateTime(timezone=True), nullable=True)
+    activation_completed_at = Column(DateTime(timezone=True), nullable=True)
+    last_activation_error = Column(Text, nullable=True)
