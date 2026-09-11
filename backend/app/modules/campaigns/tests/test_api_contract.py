@@ -48,6 +48,8 @@ def test_campaign_api_preserves_expected_routes():
         ("DELETE", "/campaigns/{campaign_id}/variants/{variant_id}"),
         ("POST", "/campaigns/{campaign_id}/demo/events"),
         ("DELETE", "/campaigns/{campaign_id}/demo/events"),
+        ("GET", "/campaigns/{campaign_id}/meta-ads/publications"),
+        ("POST", "/campaigns/{campaign_id}/meta-ads/publish"),
     }
     assert expected <= contract
 
