@@ -19,6 +19,30 @@ export interface MetaAdAccount {
   timezone_name: string | null
 }
 
+export interface MetaPixel {
+  id: string
+  name: string | null
+  last_fired_time: string | null
+}
+
+export interface MetaPage {
+  id: string
+  name: string | null
+}
+
+export interface MetaInstagramAccount {
+  id: string
+  name: string | null
+  username: string | null
+}
+
+export interface MetaDeliveryResources {
+  ad_account_id: string
+  pixels: MetaPixel[]
+  pages: MetaPage[]
+  instagram_accounts: MetaInstagramAccount[]
+}
+
 export interface MetaAdsCampaignPublication {
   id: string
   campaign_id: string
@@ -37,6 +61,8 @@ export const metaAdsApi = {
   connectMock: () => request<{ connected: boolean; meta_user_id: string; meta_user_name: string | null }>('/meta-ads/connect-mock', { method: 'POST' }),
   disconnect: () => request<{ disconnected: boolean }>('/meta-ads/disconnect', { method: 'POST' }),
   adAccounts: () => request<MetaAdAccount[]>('/meta-ads/ad-accounts'),
+  deliveryResources: (adAccountId: string) =>
+    request<MetaDeliveryResources>(`/meta-ads/ad-accounts/${encodeURIComponent(adAccountId)}/delivery-resources`),
   campaignPublications: (campaignId: string) =>
     request<MetaAdsCampaignPublication[]>(`/campaigns/${campaignId}/meta-ads/publications`),
   publishCampaignPaused: (campaignId: string, adAccountId: string) =>

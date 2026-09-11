@@ -35,6 +35,30 @@ class MetaAdAccount(BaseModel):
     timezone_name: str | None = None
 
 
+class MetaPixel(BaseModel):
+    id: str
+    name: str | None = None
+    last_fired_time: str | None = None
+
+
+class MetaPage(BaseModel):
+    id: str
+    name: str | None = None
+
+
+class MetaInstagramAccount(BaseModel):
+    id: str
+    name: str | None = None
+    username: str | None = None
+
+
+class MetaDeliveryResources(BaseModel):
+    ad_account_id: str
+    pixels: list[MetaPixel]
+    pages: list[MetaPage]
+    instagram_accounts: list[MetaInstagramAccount]
+
+
 def _service(db: AsyncSession) -> MetaAdsConnectionService:
     return MetaAdsConnectionService(db)
 
@@ -96,3 +120,15 @@ async def list_meta_ad_accounts(
     db: AsyncSession = Depends(get_db),
 ):
     return await _service(db).list_ad_accounts(workspace.id)
+
+
+@router.get(
+    "/ad-accounts/{ad_account_id}/delivery-resources",
+    response_model=MetaDeliveryResources,
+)
+async def get_meta_delivery_resources(
+    ad_account_id: str,
+    workspace: Workspace = Depends(get_current_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _service(db).get_delivery_resources(workspace.id, ad_account_id)
