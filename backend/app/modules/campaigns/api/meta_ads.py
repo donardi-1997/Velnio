@@ -13,6 +13,7 @@ from app.models.workspace import Workspace
 from app.modules.campaigns.application.meta_ads_ads import MetaAdsAdPublishingService
 from app.modules.campaigns.application.meta_ads_adsets import MetaAdsAdSetPublishingService
 from app.modules.campaigns.application.meta_ads_creatives import MetaAdsCreativePublishingService
+from app.modules.campaigns.application.meta_ads_launch_intents import MetaAdsLaunchIntentService
 from app.modules.campaigns.application.meta_ads_launch_readiness import MetaAdsLaunchReadinessService
 from app.modules.campaigns.application.meta_ads_publishing import MetaAdsCampaignPublishingService
 
@@ -146,8 +147,20 @@ class MetaLaunchPlanResponse(BaseModel):
 class MetaLaunchReadinessResponse(BaseModel):
     ready: bool
     side_effects_performed: bool
+    readiness_fingerprint: str
     checks: list[MetaLaunchCheckResponse]
     launch_plan: MetaLaunchPlanResponse
+
+
+class MetaLaunchIntentResponse(BaseModel):
+    id: str
+    ad_publication_id: str
+    readiness_fingerprint: str
+    confirmation_token: str
+    expires_at: datetime
+    created_at: datetime
+    status: Literal["PENDING_CONFIRMATION"]
+    side_effects_performed: bool
 
 
 @router.get("/{campaign_id}/meta-ads/publications", response_model=list[MetaCampaignPublicationResponse])
@@ -327,6 +340,27 @@ async def get_meta_launch_readiness(
     db: AsyncSession = Depends(get_db),
 ):
     return await MetaAdsLaunchReadinessService(db).get_readiness(
+        campaign_id,
+        publication_id,
+        ad_publication_id,
+        workspace.id,
+        user.id,
+    )
+
+
+@router.post(
+    "/{campaign_id}/meta-ads/publications/{publication_id}/ads/{ad_publication_id}/launch-intent",
+    response_model=MetaLaunchIntentResponse,
+)
+async def create_meta_launch_intent(
+    campaign_id: UUID,
+    publication_id: UUID,
+    ad_publication_id: UUID,
+    workspace: Workspace = Depends(get_current_workspace),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await MetaAdsLaunchIntentService(db).create_intent(
         campaign_id,
         publication_id,
         ad_publication_id,

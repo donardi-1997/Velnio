@@ -162,8 +162,20 @@ export interface MetaLaunchPlan {
 export interface MetaLaunchReadiness {
   ready: boolean
   side_effects_performed: boolean
+  readiness_fingerprint: string
   checks: MetaLaunchCheck[]
   launch_plan: MetaLaunchPlan
+}
+
+export interface MetaLaunchIntent {
+  id: string
+  ad_publication_id: string
+  readiness_fingerprint: string
+  confirmation_token: string
+  expires_at: string
+  created_at: string
+  status: 'PENDING_CONFIRMATION'
+  side_effects_performed: boolean
 }
 
 export const metaAdsApi = {
@@ -206,6 +218,10 @@ export const metaAdsApi = {
     request<MetaAdRemoteState>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ads/${adPublicationId}/remote-state`),
   launchReadiness: (campaignId: string, publicationId: string, adPublicationId: string) =>
     request<MetaLaunchReadiness>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ads/${adPublicationId}/launch-readiness`),
+  createLaunchIntent: (campaignId: string, publicationId: string, adPublicationId: string) =>
+    request<MetaLaunchIntent>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ads/${adPublicationId}/launch-intent`, {
+      method: 'POST',
+    }),
   publishAdPaused: (campaignId: string, publicationId: string, creativePublicationId: string) =>
     request<MetaAdPublication>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ads`, {
       method: 'POST',

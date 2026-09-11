@@ -20,6 +20,7 @@ from app.models.meta_ads import (
     MetaAdsCampaignPublication,
     MetaAdsConnection,
     MetaAdsCreativePublication,
+    MetaAdsLaunchIntent,
     MetaAdsOAuthState,
 )
 from app.models.knowledge import KnowledgeSource
@@ -35,6 +36,6 @@ __all__ = [
     "ProductEnrichment", "CampaignVisualDirection",
     "TrackingEvent", "LandingVariant", "CampaignPerformanceInsight",
     "GoogleDriveConnection", "GoogleDriveOAuthState", "ProductSourceDocument",
-    "MetaAdsConnection", "MetaAdsOAuthState", "MetaAdsCampaignPublication", "MetaAdsAdSetPublication", "MetaAdsCreativePublication", "MetaAdsAdPublication",
+    "MetaAdsConnection", "MetaAdsOAuthState", "MetaAdsCampaignPublication", "MetaAdsAdSetPublication", "MetaAdsCreativePublication", "MetaAdsAdPublication", "MetaAdsLaunchIntent",
     "KnowledgeSource", "CampaignBrief",
 ]
