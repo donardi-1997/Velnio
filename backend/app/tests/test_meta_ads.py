@@ -65,6 +65,68 @@ async def test_meta_ads_mock_connection_lists_accounts(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_meta_ads_delivery_resources_are_discovered_read_only(client: AsyncClient):
+    token = await _register(client, "meta-resources@test.com")
+    headers = _headers(token)
+    await client.post("/api/meta-ads/connect-mock", headers=headers)
+
+    response = await client.get(
+        "/api/meta-ads/ad-accounts/act_1000000001/delivery-resources",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ad_account_id"] == "act_1000000001"
+    assert len(payload["pixels"]) == 1
+    assert payload["pixels"][0]["id"].isdigit()
+    assert payload["pixels"][0]["name"] == "Velnio Demo Pixel"
+    assert len(payload["pages"]) == 1
+    assert payload["pages"][0]["name"] == "Velnio Demo Page"
+    assert len(payload["instagram_accounts"]) == 1
+    assert payload["instagram_accounts"][0]["username"] == "velnio_demo"
+
+
+@pytest.mark.asyncio
+async def test_meta_ads_delivery_resources_require_connection(client: AsyncClient):
+    token = await _register(client, "meta-resources-no-connection@test.com")
+    response = await client.get(
+        "/api/meta-ads/ad-accounts/act_1000000001/delivery-resources",
+        headers=_headers(token),
+    )
+    assert response.status_code == 400
+    assert "not connected" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_meta_ads_delivery_resources_reject_inaccessible_account(client: AsyncClient):
+    token = await _register(client, "meta-resources-inaccessible@test.com")
+    headers = _headers(token)
+    await client.post("/api/meta-ads/connect-mock", headers=headers)
+
+    response = await client.get(
+        "/api/meta-ads/ad-accounts/act_9999999999/delivery-resources",
+        headers=headers,
+    )
+    assert response.status_code == 403
+    assert "not accessible" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_meta_ads_delivery_resources_reject_malformed_account(client: AsyncClient):
+    token = await _register(client, "meta-resources-malformed@test.com")
+    headers = _headers(token)
+    await client.post("/api/meta-ads/connect-mock", headers=headers)
+
+    response = await client.get(
+        "/api/meta-ads/ad-accounts/not-an-account/delivery-resources",
+        headers=headers,
+    )
+    assert response.status_code == 400
+    assert "invalid" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
 async def test_meta_ads_disconnect_revokes_local_connection(client: AsyncClient):
     token = await _register(client, "meta-disconnect@test.com")
     headers = _headers(token)
