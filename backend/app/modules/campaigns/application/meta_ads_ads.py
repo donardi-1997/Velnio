@@ -51,6 +51,47 @@ class MetaAdsAdPublishingService:
         )
         return [self._serialize(row) for row in result.scalars().all()]
 
+    async def get_remote_state(
+        self,
+        campaign_id: UUID,
+        publication_id: UUID,
+        ad_publication_id: UUID,
+        workspace_id: UUID,
+    ) -> dict:
+        await self._get_campaign(campaign_id, workspace_id)
+        publication = await self._get_publication(campaign_id, publication_id, workspace_id)
+        ad_set = await self._get_ad_set(publication.id, workspace_id, lock=False)
+        ad = await self._get_ad(
+            ad_publication_id,
+            publication.id,
+            ad_set.id,
+            workspace_id,
+        )
+        creative = await self._get_creative(
+            ad.creative_publication_id,
+            publication.id,
+            ad_set.id,
+            workspace_id,
+        )
+        access_token = await self.connection_service.get_valid_token(workspace_id)
+        state = await self.remote_state_guard.get_validated_ad_state(
+            access_token,
+            publication,
+            ad_set,
+            creative,
+            ad,
+        )
+        return {
+            "ad_publication_id": str(ad.id),
+            "remote_ad_id": ad.remote_ad_id,
+            "account_id": state["account_id"],
+            "campaign_id": state["campaign_id"],
+            "adset_id": state["adset_id"],
+            "creative_id": state["creative_id"],
+            "configured_status": state["status"],
+            "effective_status": state.get("effective_status"),
+        }
+
     async def publish_paused_ad(
         self,
         campaign_id: UUID,
@@ -209,6 +250,26 @@ class MetaAdsAdPublishingService:
         if creative is None:
             raise NotFoundException("Meta Ads Creative publication")
         return creative
+
+    async def _get_ad(
+        self,
+        ad_publication_id: UUID,
+        campaign_publication_id: UUID,
+        ad_set_publication_id: UUID,
+        workspace_id: UUID,
+    ) -> MetaAdsAdPublication:
+        result = await self.db.execute(
+            select(MetaAdsAdPublication).where(
+                MetaAdsAdPublication.id == ad_publication_id,
+                MetaAdsAdPublication.workspace_id == workspace_id,
+                MetaAdsAdPublication.campaign_publication_id == campaign_publication_id,
+                MetaAdsAdPublication.ad_set_publication_id == ad_set_publication_id,
+            )
+        )
+        ad = result.scalar_one_or_none()
+        if ad is None:
+            raise NotFoundException("Meta Ads Ad publication")
+        return ad
 
     async def _require_admin_membership(self, workspace_id: UUID, user_id: UUID) -> None:
         result = await self.db.execute(

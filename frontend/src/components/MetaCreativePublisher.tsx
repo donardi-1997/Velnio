@@ -9,6 +9,7 @@ import {
   type MetaCallToAction,
 } from '../lib/metaAds'
 import type { Campaign, CampaignImage } from '../types'
+import { MetaAdLiveState } from './MetaAdLiveState'
 
 
 type CreativeCampaign = Campaign & {
@@ -286,17 +287,24 @@ export function MetaCreativePublisher({ campaignId, publication, adSet }: MetaCr
 
                 <div className="mt-3 border-t border-zinc-800 pt-3">
                   {existingAd ? (
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-medium text-zinc-300">Meta Ad</span>
-                          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-300">
-                            {existingAd.remote_status}
-                          </span>
+                    <div>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-zinc-300">Meta Ad</span>
+                            <span className="rounded-full bg-zinc-700 px-2 py-0.5 text-[11px] font-medium text-zinc-300">
+                              Local snapshot {existingAd.remote_status}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[11px] text-zinc-500">Meta Ad ID {existingAd.remote_ad_id}</p>
                         </div>
-                        <p className="mt-1 text-[11px] text-zinc-500">Meta Ad ID {existingAd.remote_ad_id}</p>
+                        <span className="text-xs text-zinc-500">No activation control in Velnio</span>
                       </div>
-                      <span className="text-xs text-zinc-500">No activation control in Velnio</span>
+                      <MetaAdLiveState
+                        campaignId={campaignId}
+                        publicationId={publication.id}
+                        ad={existingAd}
+                      />
                     </div>
                   ) : (
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

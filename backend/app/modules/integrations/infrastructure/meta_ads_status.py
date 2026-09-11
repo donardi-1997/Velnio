@@ -30,12 +30,26 @@ class MetaAdsStatusProvider:
     ) -> dict[str, Any]:
         raise NotImplementedError
 
+    async def get_ad_state(
+        self,
+        access_token: str,
+        ad_account_id: str,
+        remote_campaign_id: str,
+        remote_ad_set_id: str,
+        remote_creative_id: str,
+        remote_ad_id: str,
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
 
 class UnsupportedMetaAdsStatusProvider(UnsupportedMetaAdsProvider, MetaAdsStatusProvider):
     async def get_campaign_state(self, *args, **kwargs) -> dict[str, Any]:
         raise MetaAdsProviderError("Unsupported Meta Ads provider mode")
 
     async def get_ad_set_state(self, *args, **kwargs) -> dict[str, Any]:
+        raise MetaAdsProviderError("Unsupported Meta Ads provider mode")
+
+    async def get_ad_state(self, *args, **kwargs) -> dict[str, Any]:
         raise MetaAdsProviderError("Unsupported Meta Ads provider mode")
 
 
@@ -70,6 +84,28 @@ class MockMetaAdsStatusProvider(MockMetaAdsProvider, MetaAdsStatusProvider):
             "id": remote_ad_set_id,
             "account_id": ad_account_id.removeprefix("act_"),
             "campaign_id": remote_campaign_id,
+            "status": "PAUSED",
+            "effective_status": "PAUSED",
+        }
+
+    async def get_ad_state(
+        self,
+        access_token: str,
+        ad_account_id: str,
+        remote_campaign_id: str,
+        remote_ad_set_id: str,
+        remote_creative_id: str,
+        remote_ad_id: str,
+    ) -> dict[str, Any]:
+        self._validate_ad_account_id(ad_account_id)
+        if not all((remote_campaign_id, remote_ad_set_id, remote_creative_id, remote_ad_id)):
+            raise MetaAdsProviderError("Invalid Meta Ad hierarchy")
+        return {
+            "id": remote_ad_id,
+            "account_id": ad_account_id.removeprefix("act_"),
+            "campaign_id": remote_campaign_id,
+            "adset_id": remote_ad_set_id,
+            "creative_id": remote_creative_id,
             "status": "PAUSED",
             "effective_status": "PAUSED",
         }
@@ -118,6 +154,30 @@ class RealMetaAdsStatusProvider(RealMetaAdsProvider, MetaAdsStatusProvider):
         )
         return self._normalize_ad_set_state(item, remote_ad_set_id)
 
+    async def get_ad_state(
+        self,
+        access_token: str,
+        ad_account_id: str,
+        remote_campaign_id: str,
+        remote_ad_set_id: str,
+        remote_creative_id: str,
+        remote_ad_id: str,
+    ) -> dict[str, Any]:
+        self._require_config()
+        self._validate_ad_account_id(ad_account_id)
+        self._validate_remote_id(remote_campaign_id, "Campaign")
+        self._validate_remote_id(remote_ad_set_id, "Ad Set")
+        self._validate_remote_id(remote_creative_id, "AdCreative")
+        self._validate_remote_id(remote_ad_id, "Ad")
+        item = await self._get_json(
+            f"{self.graph_base}/{remote_ad_id}",
+            params={
+                "fields": "id,account_id,campaign_id,adset_id,configured_status,status,effective_status,creative",
+                "access_token": access_token,
+            },
+        )
+        return self._normalize_ad_state(item, remote_ad_id)
+
     @staticmethod
     def _validate_remote_id(value: str, resource: str) -> None:
         if not re.fullmatch(r"[0-9]+", value or ""):
@@ -161,6 +221,38 @@ class RealMetaAdsStatusProvider(RealMetaAdsProvider, MetaAdsStatusProvider):
             "id": expected_id,
             "account_id": account_id,
             "campaign_id": campaign_id,
+            "status": status,
+            "effective_status": effective_status if isinstance(effective_status, str) else None,
+        }
+
+    @staticmethod
+    def _normalize_ad_state(item: dict[str, Any], expected_id: str) -> dict[str, Any]:
+        remote_id = item.get("id")
+        account_id = item.get("account_id")
+        campaign_id = item.get("campaign_id")
+        adset_id = item.get("adset_id")
+        status = item.get("configured_status") or item.get("status")
+        effective_status = item.get("effective_status")
+        creative = item.get("creative") if isinstance(item.get("creative"), dict) else {}
+        creative_id = creative.get("id")
+        if str(remote_id or "") != expected_id:
+            raise MetaAdsProviderError("Meta returned a mismatched Ad state")
+        if not isinstance(account_id, str) or not account_id:
+            raise MetaAdsProviderError("Meta returned an invalid Ad account")
+        if not isinstance(campaign_id, str) or not campaign_id:
+            raise MetaAdsProviderError("Meta returned an invalid Ad campaign")
+        if not isinstance(adset_id, str) or not adset_id:
+            raise MetaAdsProviderError("Meta returned an invalid Ad Set relationship")
+        if not isinstance(creative_id, str) or not creative_id:
+            raise MetaAdsProviderError("Meta returned an invalid AdCreative relationship")
+        if not isinstance(status, str) or not status:
+            raise MetaAdsProviderError("Meta returned an invalid Ad status")
+        return {
+            "id": expected_id,
+            "account_id": account_id,
+            "campaign_id": campaign_id,
+            "adset_id": adset_id,
+            "creative_id": creative_id,
             "status": status,
             "effective_status": effective_status if isinstance(effective_status, str) else None,
         }

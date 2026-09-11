@@ -108,6 +108,17 @@ class MetaAdPublicationResponse(BaseModel):
     reused: bool = False
 
 
+class MetaAdRemoteStateResponse(BaseModel):
+    ad_publication_id: str
+    remote_ad_id: str
+    account_id: str
+    campaign_id: str
+    adset_id: str
+    creative_id: str
+    configured_status: str
+    effective_status: str | None = None
+
+
 @router.get("/{campaign_id}/meta-ads/publications", response_model=list[MetaCampaignPublicationResponse])
 async def list_meta_campaign_publications(
     campaign_id: UUID,
@@ -249,6 +260,25 @@ async def list_meta_ads(
     return await MetaAdsAdPublishingService(db).list_ads(
         campaign_id,
         publication_id,
+        workspace.id,
+    )
+
+
+@router.get(
+    "/{campaign_id}/meta-ads/publications/{publication_id}/ads/{ad_publication_id}/remote-state",
+    response_model=MetaAdRemoteStateResponse,
+)
+async def get_meta_ad_remote_state(
+    campaign_id: UUID,
+    publication_id: UUID,
+    ad_publication_id: UUID,
+    workspace: Workspace = Depends(get_current_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    return await MetaAdsAdPublishingService(db).get_remote_state(
+        campaign_id,
+        publication_id,
+        ad_publication_id,
         workspace.id,
     )
 
