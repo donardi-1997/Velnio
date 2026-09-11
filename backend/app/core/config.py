@@ -86,6 +86,7 @@ class Settings(BaseSettings):
     META_GRAPH_API_VERSION: str = "v26.0"
     META_ADS_SCOPES: str = "ads_read,ads_management"
     META_REQUEST_TIMEOUT_SECONDS: float = 15.0
+    META_ADS_LAUNCH_ENABLED: bool = False
 
     MAX_DOCUMENT_PROCESSING_MB: int = 25
     MAX_AI_CONTEXT_CHARS: int = 50000

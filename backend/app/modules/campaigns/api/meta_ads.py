@@ -13,6 +13,7 @@ from app.models.workspace import Workspace
 from app.modules.campaigns.application.meta_ads_ads import MetaAdsAdPublishingService
 from app.modules.campaigns.application.meta_ads_adsets import MetaAdsAdSetPublishingService
 from app.modules.campaigns.application.meta_ads_creatives import MetaAdsCreativePublishingService
+from app.modules.campaigns.application.meta_ads_launch_confirmation import MetaAdsLaunchConfirmationService
 from app.modules.campaigns.application.meta_ads_launch_intents import MetaAdsLaunchIntentService
 from app.modules.campaigns.application.meta_ads_launch_readiness import MetaAdsLaunchReadinessService
 from app.modules.campaigns.application.meta_ads_publishing import MetaAdsCampaignPublishingService
@@ -46,6 +47,14 @@ class MetaCreativePublishRequest(BaseModel):
 
 class MetaAdPublishRequest(BaseModel):
     creative_publication_id: UUID
+
+
+class MetaLaunchConfirmRequest(BaseModel):
+    intent_id: UUID
+    confirmation_token: str = Field(min_length=32, max_length=256)
+    acknowledged_readiness_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    acknowledged_daily_budget_minor: int = Field(gt=0, le=MAX_SAFE_DAILY_BUDGET_MINOR)
+    confirm_spend: Literal[True]
 
 
 class MetaCampaignPublicationResponse(BaseModel):
@@ -161,6 +170,19 @@ class MetaLaunchIntentResponse(BaseModel):
     created_at: datetime
     status: Literal["PENDING_CONFIRMATION"]
     side_effects_performed: bool
+
+
+class MetaLaunchConfirmationResponse(BaseModel):
+    intent_id: str
+    status: Literal["SUCCEEDED"]
+    remote_campaign_status: Literal["ACTIVE"]
+    remote_ad_set_status: Literal["ACTIVE"]
+    remote_ad_status: Literal["ACTIVE"]
+    daily_budget_minor: int
+    currency: str
+    target_country: str
+    destination_url: str
+    activated_at: datetime
 
 
 @router.get("/{campaign_id}/meta-ads/publications", response_model=list[MetaCampaignPublicationResponse])
@@ -366,6 +388,32 @@ async def create_meta_launch_intent(
         ad_publication_id,
         workspace.id,
         user.id,
+    )
+
+
+@router.post(
+    "/{campaign_id}/meta-ads/publications/{publication_id}/ads/{ad_publication_id}/launch-confirm",
+    response_model=MetaLaunchConfirmationResponse,
+)
+async def confirm_meta_launch(
+    campaign_id: UUID,
+    publication_id: UUID,
+    ad_publication_id: UUID,
+    data: MetaLaunchConfirmRequest,
+    workspace: Workspace = Depends(get_current_workspace),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await MetaAdsLaunchConfirmationService(db).confirm_launch(
+        campaign_id,
+        publication_id,
+        ad_publication_id,
+        workspace.id,
+        user.id,
+        data.intent_id,
+        data.confirmation_token,
+        data.acknowledged_readiness_fingerprint,
+        data.acknowledged_daily_budget_minor,
     )
 
 
