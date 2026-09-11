@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { metaAdsApi, type MetaAdsCampaignPublication } from '../lib/metaAds'
+import { MetaDeliveryConfigEditor } from './MetaDeliveryConfigEditor'
 
 interface MetaAdsPublishPanelProps {
   campaignId: string
@@ -245,6 +246,7 @@ export function MetaAdsPublishPanel({ campaignId }: MetaAdsPublishPanelProps) {
                   <span>{publication.objective}</span>
                   <span>{new Date(publication.created_at).toLocaleString()}</span>
                 </div>
+                <MetaDeliveryConfigEditor campaignId={campaignId} publication={publication} />
               </div>
             ))}
           </div>
