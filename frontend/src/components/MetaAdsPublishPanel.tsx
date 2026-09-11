@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { metaAdsApi, type MetaAdsCampaignPublication } from '../lib/metaAds'
+import { MetaAdSetPublisher } from './MetaAdSetPublisher'
 import { MetaDeliveryConfigEditor } from './MetaDeliveryConfigEditor'
 
 interface MetaAdsPublishPanelProps {
@@ -86,7 +87,7 @@ export function MetaAdsPublishPanel({ campaignId }: MetaAdsPublishPanelProps) {
             )}
           </div>
           <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-            Create or reconcile the Meta Campaign layer only. Velnio always creates it as PAUSED in this phase.
+            Build the Meta Campaign and Ad Set layers incrementally. Velnio keeps every remote object PAUSED in this phase.
           </p>
         </div>
         <Link to="/settings" className="btn-secondary text-sm whitespace-nowrap">
@@ -95,7 +96,7 @@ export function MetaAdsPublishPanel({ campaignId }: MetaAdsPublishPanelProps) {
       </div>
 
       <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-200">
-        No Ad Set, creative, ad, budget, or automatic activation is created here. Creating this paused campaign does not start ad delivery.
+        Velnio does not create a creative or ad and never activates delivery here. Ad Set budget is only configured after explicit input and the Ad Set remains PAUSED.
       </div>
 
       {statusQuery.isLoading ? (
@@ -179,18 +180,8 @@ export function MetaAdsPublishPanel({ campaignId }: MetaAdsPublishPanelProps) {
                 <p className="text-sm text-red-400">Could not load delivery resources for this ad account.</p>
               ) : resources ? (
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <ResourceCard
-                    label="Pixels"
-                    count={resources.pixels.length}
-                    primary={resources.pixels[0]?.name || resources.pixels[0]?.id}
-                    required
-                  />
-                  <ResourceCard
-                    label="Pages"
-                    count={resources.pages.length}
-                    primary={resources.pages[0]?.name || resources.pages[0]?.id}
-                    required
-                  />
+                  <ResourceCard label="Pixels" count={resources.pixels.length} primary={resources.pixels[0]?.name || resources.pixels[0]?.id} required />
+                  <ResourceCard label="Pages" count={resources.pages.length} primary={resources.pages[0]?.name || resources.pages[0]?.id} required />
                   <ResourceCard
                     label="Instagram"
                     count={resources.instagram_accounts.length}
@@ -247,6 +238,7 @@ export function MetaAdsPublishPanel({ campaignId }: MetaAdsPublishPanelProps) {
                   <span>{new Date(publication.created_at).toLocaleString()}</span>
                 </div>
                 <MetaDeliveryConfigEditor campaignId={campaignId} publication={publication} />
+                <MetaAdSetPublisher campaignId={campaignId} publication={publication} />
               </div>
             ))}
           </div>
@@ -272,9 +264,7 @@ function ResourceCard({
     <div className={`rounded-lg border p-3 ${available ? 'border-zinc-700 bg-zinc-800/60' : required ? 'border-amber-500/25 bg-amber-500/5' : 'border-zinc-700 bg-zinc-800/60'}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</span>
-        <span className={`text-xs font-medium ${available ? 'text-green-400' : required ? 'text-amber-400' : 'text-zinc-500'}`}>
-          {count}
-        </span>
+        <span className={`text-xs font-medium ${available ? 'text-green-400' : required ? 'text-amber-400' : 'text-zinc-500'}`}>{count}</span>
       </div>
       <p className="mt-2 truncate text-sm text-zinc-200">{primary || (required ? 'Required before Ad Set' : 'Optional')}</p>
     </div>
