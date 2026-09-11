@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import hashlib
+import re
 from typing import Any
 from urllib.parse import urlencode
 
@@ -34,6 +36,16 @@ class MetaAdsProvider(ABC):
     async def list_ad_accounts(self, access_token: str) -> list[dict[str, Any]]:
         raise NotImplementedError
 
+    @abstractmethod
+    async def ensure_paused_campaign(
+        self,
+        access_token: str,
+        ad_account_id: str,
+        name: str,
+        objective: str,
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
 
 class UnsupportedMetaAdsProvider(MetaAdsProvider):
     async def get_auth_url(self, state: str) -> str:
@@ -46,6 +58,15 @@ class UnsupportedMetaAdsProvider(MetaAdsProvider):
         raise MetaAdsProviderError("Unsupported Meta Ads provider mode")
 
     async def list_ad_accounts(self, access_token: str) -> list[dict[str, Any]]:
+        raise MetaAdsProviderError("Unsupported Meta Ads provider mode")
+
+    async def ensure_paused_campaign(
+        self,
+        access_token: str,
+        ad_account_id: str,
+        name: str,
+        objective: str,
+    ) -> dict[str, Any]:
         raise MetaAdsProviderError("Unsupported Meta Ads provider mode")
 
 
@@ -82,6 +103,28 @@ class MockMetaAdsProvider(MetaAdsProvider):
                 "timezone_name": "America/Bogota",
             },
         ]
+
+    async def ensure_paused_campaign(
+        self,
+        access_token: str,
+        ad_account_id: str,
+        name: str,
+        objective: str,
+    ) -> dict[str, Any]:
+        self._validate_ad_account_id(ad_account_id)
+        digest = hashlib.sha256(f"{ad_account_id}:{name}".encode("utf-8")).hexdigest()[:20]
+        return {
+            "id": f"mock_meta_campaign_{digest}",
+            "name": name,
+            "status": "PAUSED",
+            "objective": objective,
+            "reused": False,
+        }
+
+    @staticmethod
+    def _validate_ad_account_id(ad_account_id: str) -> None:
+        if not re.fullmatch(r"act_[0-9]+", ad_account_id):
+            raise MetaAdsProviderError("Invalid Meta ad account id")
 
 
 class RealMetaAdsProvider(MetaAdsProvider):
@@ -183,13 +226,94 @@ class RealMetaAdsProvider(MetaAdsProvider):
                         "timezone_name": item.get("timezone_name"),
                     }
                 )
-            paging = payload.get("paging") if isinstance(payload.get("paging"), dict) else {}
-            cursors = paging.get("cursors") if isinstance(paging.get("cursors"), dict) else {}
-            next_after = cursors.get("after")
-            if not data or not isinstance(next_after, str) or not next_after or next_after == after:
+            after = self._next_cursor(payload, after)
+            if after is None:
                 break
-            after = next_after
         return accounts
+
+    async def ensure_paused_campaign(
+        self,
+        access_token: str,
+        ad_account_id: str,
+        name: str,
+        objective: str,
+    ) -> dict[str, Any]:
+        self._require_config()
+        self._validate_ad_account_id(ad_account_id)
+        existing = await self._find_campaign_by_name(access_token, ad_account_id, name)
+        if existing is not None:
+            return {
+                "id": existing["id"],
+                "name": name,
+                "status": existing.get("status") or "UNKNOWN",
+                "objective": objective,
+                "reused": True,
+            }
+
+        payload = await self._post_json(
+            f"{self.graph_base}/{ad_account_id}/campaigns",
+            data={
+                "access_token": access_token,
+                "name": name,
+                "objective": objective,
+                "status": "PAUSED",
+                "buying_type": "AUCTION",
+                "special_ad_categories": "[]",
+            },
+        )
+        remote_id = payload.get("id")
+        if not isinstance(remote_id, str) or not remote_id:
+            raise MetaAdsProviderError("Meta returned an invalid campaign response")
+        return {
+            "id": remote_id,
+            "name": name,
+            "status": "PAUSED",
+            "objective": objective,
+            "reused": False,
+        }
+
+    async def _find_campaign_by_name(
+        self,
+        access_token: str,
+        ad_account_id: str,
+        name: str,
+    ) -> dict[str, Any] | None:
+        after: str | None = None
+        for _ in range(20):
+            params: dict[str, Any] = {
+                "fields": "id,name,status,effective_status",
+                "limit": 100,
+                "access_token": access_token,
+            }
+            if after:
+                params["after"] = after
+            payload = await self._get_json(
+                f"{self.graph_base}/{ad_account_id}/campaigns",
+                params=params,
+            )
+            data = payload.get("data")
+            if not isinstance(data, list):
+                raise MetaAdsProviderError("Meta returned an invalid campaign list response")
+            for item in data:
+                if not isinstance(item, dict) or item.get("name") != name:
+                    continue
+                remote_id = item.get("id")
+                if not isinstance(remote_id, str) or not remote_id:
+                    raise MetaAdsProviderError("Meta returned an invalid campaign id")
+                return item
+            after = self._next_cursor(payload, after)
+            if after is None:
+                break
+        return None
+
+    @staticmethod
+    def _next_cursor(payload: dict[str, Any], previous: str | None) -> str | None:
+        paging = payload.get("paging") if isinstance(payload.get("paging"), dict) else {}
+        cursors = paging.get("cursors") if isinstance(paging.get("cursors"), dict) else {}
+        value = cursors.get("after")
+        if not isinstance(value, str) or not value or value == previous:
+            return None
+        return value
 
     async def _get_json(self, url: str, *, params: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -214,6 +338,35 @@ class RealMetaAdsProvider(MetaAdsProvider):
         if not isinstance(payload, dict) or payload.get("error"):
             raise MetaAdsProviderError("Meta Ads returned an invalid response")
         return payload
+
+    async def _post_json(self, url: str, *, data: dict[str, Any]) -> dict[str, Any]:
+        try:
+            timeout = httpx.Timeout(settings.META_REQUEST_TIMEOUT_SECONDS)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(url, data=data)
+                response.raise_for_status()
+                payload = response.json()
+        except httpx.TimeoutException as exc:
+            logger.warning("Meta Ads campaign request timed out")
+            raise MetaAdsProviderError("Meta Ads request timed out") from exc
+        except httpx.RequestError as exc:
+            logger.warning("Meta Ads campaign network request failed: %s", type(exc).__name__)
+            raise MetaAdsProviderError("Meta Ads is temporarily unavailable") from exc
+        except httpx.HTTPStatusError as exc:
+            logger.warning("Meta Ads campaign request returned HTTP %s", exc.response.status_code)
+            raise MetaAdsProviderError("Meta Ads rejected the campaign request") from exc
+        except ValueError as exc:
+            logger.warning("Meta Ads campaign request returned invalid JSON")
+            raise MetaAdsProviderError("Meta Ads returned an invalid response") from exc
+
+        if not isinstance(payload, dict) or payload.get("error"):
+            raise MetaAdsProviderError("Meta Ads returned an invalid response")
+        return payload
+
+    @staticmethod
+    def _validate_ad_account_id(ad_account_id: str) -> None:
+        if not re.fullmatch(r"act_[0-9]+", ad_account_id):
+            raise MetaAdsProviderError("Invalid Meta ad account id")
 
     @staticmethod
     def _require_token(payload: dict[str, Any]) -> str:
