@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.db.base import Base
@@ -46,3 +46,38 @@ class MetaAdsOAuthState(UUIDMixin, TimestampMixin, Base):
     nonce_hash = Column(String(64), nullable=False, unique=True, index=True)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     consumed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class MetaAdsCampaignPublication(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "meta_ads_campaign_publications"
+
+    workspace_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    campaign_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("campaigns.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_by_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    ad_account_id = Column(String(64), nullable=False, index=True)
+    remote_campaign_id = Column(String(128), nullable=False, unique=True)
+    remote_campaign_name = Column(String(512), nullable=False)
+    objective = Column(String(64), nullable=False, default="OUTCOME_SALES")
+    remote_status = Column(String(32), nullable=False, default="PAUSED")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "campaign_id",
+            "ad_account_id",
+            name="uq_meta_ads_campaign_publication_campaign_account",
+        ),
+    )
