@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 
 import { metaAdsApi, type MetaAdPublication } from '../lib/metaAds'
 
@@ -16,8 +16,18 @@ export function MetaLaunchReadiness({ campaignId, publicationId, ad }: MetaLaunc
     enabled: false,
   })
 
+  const intentMutation = useMutation({
+    mutationFn: () => metaAdsApi.createLaunchIntent(campaignId, publicationId, ad.id),
+  })
+
   const readiness = readinessQuery.data
+  const intent = intentMutation.data
   const failedChecks = readiness?.checks.filter((check) => check.status === 'FAIL') || []
+
+  const refreshReadiness = () => {
+    intentMutation.reset()
+    void readinessQuery.refetch()
+  }
 
   return (
     <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
@@ -31,8 +41,8 @@ export function MetaLaunchReadiness({ campaignId, publicationId, ad }: MetaLaunc
         <button
           type="button"
           className="btn-secondary shrink-0 text-xs"
-          onClick={() => readinessQuery.refetch()}
-          disabled={readinessQuery.isFetching}
+          onClick={refreshReadiness}
+          disabled={readinessQuery.isFetching || intentMutation.isPending}
         >
           {readinessQuery.isFetching
             ? 'Checking readiness...'
@@ -58,7 +68,7 @@ export function MetaLaunchReadiness({ campaignId, publicationId, ad }: MetaLaunc
             }
           >
             {readiness.ready
-              ? 'All launch checks pass. No status was changed; an explicit launch workflow is still required.'
+              ? 'All launch checks pass. No status was changed; an explicit launch confirmation is still required.'
               : `${failedChecks.length} launch check${failedChecks.length === 1 ? '' : 's'} failed. Nothing was activated.`}
           </div>
 
@@ -88,9 +98,64 @@ export function MetaLaunchReadiness({ campaignId, publicationId, ad }: MetaLaunc
               Destination: {readiness.launch_plan.destination_url}
             </p>
             <p className="mt-1 text-[11px] text-zinc-500">
+              Preflight fingerprint: {readiness.readiness_fingerprint.slice(0, 16)}…
+            </p>
+            <p className="mt-1 text-[11px] text-zinc-500">
               Side effects performed by this check: {readiness.side_effects_performed ? 'yes' : 'no'}
             </p>
           </div>
+
+          {readiness.ready && (
+            <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-medium text-amber-200">Secure launch intent</p>
+                  <p className="mt-1 text-[11px] text-amber-100/70">
+                    Creates a short-lived, one-time confirmation token bound to this exact preflight. It does not activate Meta resources.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn-secondary shrink-0 text-xs"
+                  disabled={intentMutation.isPending || readinessQuery.isFetching}
+                  onClick={() => intentMutation.mutate()}
+                >
+                  {intentMutation.isPending
+                    ? 'Preparing intent...'
+                    : intent
+                      ? 'Replace launch intent'
+                      : 'Prepare secure launch intent'}
+                </button>
+              </div>
+
+              {intentMutation.isError && (
+                <div className="mt-3 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                  {(intentMutation.error as Error)?.message || 'Could not prepare the launch intent.'}
+                </div>
+              )}
+
+              {intent && (
+                <div className="mt-3 rounded-lg border border-zinc-700 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-300">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                      {intent.status}
+                    </span>
+                    <span>Intent {intent.id.slice(0, 8)}</span>
+                  </div>
+                  <p className="mt-2 text-zinc-500">
+                    Expires: {new Date(intent.expires_at).toLocaleString()}
+                  </p>
+                  <p className="mt-1 text-zinc-500">
+                    Bound fingerprint: {intent.readiness_fingerprint.slice(0, 16)}…
+                  </p>
+                  <p className="mt-1 text-zinc-500">
+                    Token is held only in this page session for the future explicit confirmation step; the server stores only its hash.
+                  </p>
+                  <p className="mt-1 font-medium text-amber-200">Nothing has been activated.</p>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="space-y-1.5">
             {readiness.checks.map((check) => (
