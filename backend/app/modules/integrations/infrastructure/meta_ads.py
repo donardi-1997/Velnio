@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import hashlib
+import json
 import re
 from typing import Any
 from urllib.parse import urlencode
@@ -54,6 +55,19 @@ class MetaAdsProvider(ABC):
     ) -> dict[str, Any]:
         raise NotImplementedError
 
+    @abstractmethod
+    async def ensure_paused_ad_set(
+        self,
+        access_token: str,
+        ad_account_id: str,
+        campaign_id: str,
+        name: str,
+        daily_budget_minor: int,
+        target_country: str,
+        pixel_id: str,
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
 
 class UnsupportedMetaAdsProvider(MetaAdsProvider):
     async def get_auth_url(self, state: str) -> str:
@@ -81,6 +95,18 @@ class UnsupportedMetaAdsProvider(MetaAdsProvider):
         ad_account_id: str,
         name: str,
         objective: str,
+    ) -> dict[str, Any]:
+        raise MetaAdsProviderError("Unsupported Meta Ads provider mode")
+
+    async def ensure_paused_ad_set(
+        self,
+        access_token: str,
+        ad_account_id: str,
+        campaign_id: str,
+        name: str,
+        daily_budget_minor: int,
+        target_country: str,
+        pixel_id: str,
     ) -> dict[str, Any]:
         raise MetaAdsProviderError("Unsupported Meta Ads provider mode")
 
@@ -161,6 +187,40 @@ class MockMetaAdsProvider(MetaAdsProvider):
             "name": name,
             "status": "PAUSED",
             "objective": objective,
+            "reused": False,
+        }
+
+    async def ensure_paused_ad_set(
+        self,
+        access_token: str,
+        ad_account_id: str,
+        campaign_id: str,
+        name: str,
+        daily_budget_minor: int,
+        target_country: str,
+        pixel_id: str,
+    ) -> dict[str, Any]:
+        self._validate_ad_account_id(ad_account_id)
+        if daily_budget_minor <= 0:
+            raise MetaAdsProviderError("Invalid Meta Ad Set budget")
+        if not re.fullmatch(r"[A-Z]{2}", target_country):
+            raise MetaAdsProviderError("Invalid Meta targeting country")
+        if not re.fullmatch(r"[0-9]+", pixel_id):
+            raise MetaAdsProviderError("Invalid Meta Pixel id")
+        digest = hashlib.sha256(
+            f"{ad_account_id}:{campaign_id}:{name}".encode("utf-8")
+        ).hexdigest()[:20]
+        return {
+            "id": f"mock_meta_adset_{digest}",
+            "name": name,
+            "status": "PAUSED",
+            "campaign_id": campaign_id,
+            "daily_budget_minor": daily_budget_minor,
+            "target_country": target_country,
+            "pixel_id": pixel_id,
+            "optimization_goal": "OFFSITE_CONVERSIONS",
+            "billing_event": "IMPRESSIONS",
+            "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
             "reused": False,
         }
 
@@ -351,6 +411,92 @@ class RealMetaAdsProvider(MetaAdsProvider):
             "reused": False,
         }
 
+    async def ensure_paused_ad_set(
+        self,
+        access_token: str,
+        ad_account_id: str,
+        campaign_id: str,
+        name: str,
+        daily_budget_minor: int,
+        target_country: str,
+        pixel_id: str,
+    ) -> dict[str, Any]:
+        self._require_config()
+        self._validate_ad_account_id(ad_account_id)
+        if daily_budget_minor <= 0:
+            raise MetaAdsProviderError("Invalid Meta Ad Set budget")
+        if not re.fullmatch(r"[A-Z]{2}", target_country):
+            raise MetaAdsProviderError("Invalid Meta targeting country")
+        if not re.fullmatch(r"[0-9]+", pixel_id):
+            raise MetaAdsProviderError("Invalid Meta Pixel id")
+
+        existing = await self._find_ad_set_by_name(access_token, ad_account_id, name)
+        if existing is not None:
+            self._validate_existing_ad_set(
+                existing,
+                campaign_id=campaign_id,
+                daily_budget_minor=daily_budget_minor,
+                target_country=target_country,
+                pixel_id=pixel_id,
+            )
+            return {
+                "id": existing["id"],
+                "name": name,
+                "status": "PAUSED",
+                "campaign_id": campaign_id,
+                "daily_budget_minor": daily_budget_minor,
+                "target_country": target_country,
+                "pixel_id": pixel_id,
+                "optimization_goal": "OFFSITE_CONVERSIONS",
+                "billing_event": "IMPRESSIONS",
+                "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
+                "reused": True,
+            }
+
+        targeting = {
+            "age_min": 18,
+            "age_max": 65,
+            "geo_locations": {
+                "countries": [target_country],
+                "location_types": ["home"],
+            },
+        }
+        promoted_object = {
+            "pixel_id": pixel_id,
+            "custom_event_type": "PURCHASE",
+        }
+        payload = await self._post_json(
+            f"{self.graph_base}/{ad_account_id}/adsets",
+            data={
+                "access_token": access_token,
+                "campaign_id": campaign_id,
+                "name": name,
+                "status": "PAUSED",
+                "daily_budget": str(daily_budget_minor),
+                "billing_event": "IMPRESSIONS",
+                "optimization_goal": "OFFSITE_CONVERSIONS",
+                "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
+                "targeting": json.dumps(targeting, separators=(",", ":")),
+                "promoted_object": json.dumps(promoted_object, separators=(",", ":")),
+            },
+        )
+        remote_id = payload.get("id")
+        if not isinstance(remote_id, str) or not remote_id:
+            raise MetaAdsProviderError("Meta returned an invalid Ad Set response")
+        return {
+            "id": remote_id,
+            "name": name,
+            "status": "PAUSED",
+            "campaign_id": campaign_id,
+            "daily_budget_minor": daily_budget_minor,
+            "target_country": target_country,
+            "pixel_id": pixel_id,
+            "optimization_goal": "OFFSITE_CONVERSIONS",
+            "billing_event": "IMPRESSIONS",
+            "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
+            "reused": False,
+        }
+
     async def _find_campaign_by_name(
         self,
         access_token: str,
@@ -371,6 +517,70 @@ class RealMetaAdsProvider(MetaAdsProvider):
                 raise MetaAdsProviderError("Meta returned an invalid campaign id")
             return item
         return None
+
+    async def _find_ad_set_by_name(
+        self,
+        access_token: str,
+        ad_account_id: str,
+        name: str,
+    ) -> dict[str, Any] | None:
+        ad_sets = await self._list_edge(
+            f"{self.graph_base}/{ad_account_id}/adsets",
+            access_token,
+            fields=(
+                "id,name,status,effective_status,campaign_id,daily_budget,"
+                "optimization_goal,billing_event,bid_strategy,targeting,promoted_object"
+            ),
+            max_pages=20,
+        )
+        for item in ad_sets:
+            if item.get("name") != name:
+                continue
+            remote_id = item.get("id")
+            if not isinstance(remote_id, str) or not remote_id:
+                raise MetaAdsProviderError("Meta returned an invalid Ad Set id")
+            return item
+        return None
+
+    @staticmethod
+    def _validate_existing_ad_set(
+        item: dict[str, Any],
+        *,
+        campaign_id: str,
+        daily_budget_minor: int,
+        target_country: str,
+        pixel_id: str,
+    ) -> None:
+        if item.get("status") != "PAUSED":
+            raise MetaAdsProviderError(
+                "A matching Velnio Meta Ad Set exists but is not paused; refusing to adopt or modify it"
+            )
+        if str(item.get("campaign_id") or "") != campaign_id:
+            raise MetaAdsProviderError("Matching Meta Ad Set belongs to a different campaign")
+        try:
+            existing_budget = int(item.get("daily_budget"))
+        except (TypeError, ValueError) as exc:
+            raise MetaAdsProviderError("Matching Meta Ad Set has an invalid budget") from exc
+        if existing_budget != daily_budget_minor:
+            raise MetaAdsProviderError("Matching Meta Ad Set has a different budget")
+        if item.get("optimization_goal") != "OFFSITE_CONVERSIONS":
+            raise MetaAdsProviderError("Matching Meta Ad Set has a different optimization goal")
+        if item.get("billing_event") != "IMPRESSIONS":
+            raise MetaAdsProviderError("Matching Meta Ad Set has a different billing event")
+        if item.get("bid_strategy") != "LOWEST_COST_WITHOUT_CAP":
+            raise MetaAdsProviderError("Matching Meta Ad Set has a different bid strategy")
+
+        targeting = item.get("targeting") if isinstance(item.get("targeting"), dict) else {}
+        geo = targeting.get("geo_locations") if isinstance(targeting.get("geo_locations"), dict) else {}
+        countries = geo.get("countries") if isinstance(geo.get("countries"), list) else []
+        if countries != [target_country]:
+            raise MetaAdsProviderError("Matching Meta Ad Set has different country targeting")
+
+        promoted = item.get("promoted_object") if isinstance(item.get("promoted_object"), dict) else {}
+        if str(promoted.get("pixel_id") or "") != pixel_id:
+            raise MetaAdsProviderError("Matching Meta Ad Set uses a different Pixel")
+        if promoted.get("custom_event_type") not in {None, "PURCHASE"}:
+            raise MetaAdsProviderError("Matching Meta Ad Set uses a different conversion event")
 
     async def _list_edge(
         self,
@@ -462,16 +672,16 @@ class RealMetaAdsProvider(MetaAdsProvider):
                 response.raise_for_status()
                 payload = response.json()
         except httpx.TimeoutException as exc:
-            logger.warning("Meta Ads campaign request timed out")
+            logger.warning("Meta Ads write request timed out")
             raise MetaAdsProviderError("Meta Ads request timed out") from exc
         except httpx.RequestError as exc:
-            logger.warning("Meta Ads campaign network request failed: %s", type(exc).__name__)
+            logger.warning("Meta Ads write network request failed: %s", type(exc).__name__)
             raise MetaAdsProviderError("Meta Ads is temporarily unavailable") from exc
         except httpx.HTTPStatusError as exc:
-            logger.warning("Meta Ads campaign request returned HTTP %s", exc.response.status_code)
-            raise MetaAdsProviderError("Meta Ads rejected the campaign request") from exc
+            logger.warning("Meta Ads write request returned HTTP %s", exc.response.status_code)
+            raise MetaAdsProviderError("Meta Ads rejected the write request") from exc
         except ValueError as exc:
-            logger.warning("Meta Ads campaign request returned invalid JSON")
+            logger.warning("Meta Ads write request returned invalid JSON")
             raise MetaAdsProviderError("Meta Ads returned an invalid response") from exc
 
         if not isinstance(payload, dict) or payload.get("error"):
