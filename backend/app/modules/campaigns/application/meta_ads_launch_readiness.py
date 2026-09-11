@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from urllib.parse import urlparse
 from uuid import UUID
@@ -266,35 +268,50 @@ class MetaAdsLaunchReadinessService:
         )
 
         ready = all(item["status"] == "PASS" for item in checks)
-        return {
+        launch_plan = {
+            "ad_account_id": publication.ad_account_id,
+            "remote_campaign_id": publication.remote_campaign_id,
+            "remote_ad_set_id": ad_set.remote_ad_set_id,
+            "remote_ad_id": ad.remote_ad_id,
+            "remote_creative_id": creative.remote_creative_id,
+            "destination_url": creative.destination_url,
+            "pixel_id": publication.pixel_id,
+            "page_id": publication.page_id,
+            "instagram_account_id": publication.instagram_account_id,
+            "daily_budget_minor": ad_set.daily_budget_minor,
+            "currency": ad_set.currency,
+            "target_country": ad_set.target_country,
+            "current_configured_statuses": {
+                "campaign": remote_states["campaign"]["status"] if remote_states else None,
+                "ad_set": remote_states["ad_set"]["status"] if remote_states else None,
+                "ad": remote_states["ad"]["status"] if remote_states else None,
+            },
+            "proposed_statuses": {
+                "campaign": "ACTIVE",
+                "ad_set": "ACTIVE",
+                "ad": "ACTIVE",
+            },
+        }
+        payload = {
             "ready": ready,
             "side_effects_performed": False,
             "checks": checks,
-            "launch_plan": {
-                "ad_account_id": publication.ad_account_id,
-                "remote_campaign_id": publication.remote_campaign_id,
-                "remote_ad_set_id": ad_set.remote_ad_set_id,
-                "remote_ad_id": ad.remote_ad_id,
-                "remote_creative_id": creative.remote_creative_id,
-                "destination_url": creative.destination_url,
-                "pixel_id": publication.pixel_id,
-                "page_id": publication.page_id,
-                "instagram_account_id": publication.instagram_account_id,
-                "daily_budget_minor": ad_set.daily_budget_minor,
-                "currency": ad_set.currency,
-                "target_country": ad_set.target_country,
-                "current_configured_statuses": {
-                    "campaign": remote_states["campaign"]["status"] if remote_states else None,
-                    "ad_set": remote_states["ad_set"]["status"] if remote_states else None,
-                    "ad": remote_states["ad"]["status"] if remote_states else None,
-                },
-                "proposed_statuses": {
-                    "campaign": "ACTIVE",
-                    "ad_set": "ACTIVE",
-                    "ad": "ACTIVE",
-                },
-            },
+            "launch_plan": launch_plan,
         }
+        payload["readiness_fingerprint"] = self.fingerprint(payload)
+        return payload
+
+    @staticmethod
+    def fingerprint(readiness: dict) -> str:
+        canonical = {
+            "checks": [
+                {"key": item.get("key"), "status": item.get("status")}
+                for item in readiness.get("checks", [])
+            ],
+            "launch_plan": readiness.get("launch_plan", {}),
+        }
+        encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
     async def _get_campaign(self, campaign_id: UUID, workspace_id: UUID) -> Campaign:
         result = await self.db.execute(
