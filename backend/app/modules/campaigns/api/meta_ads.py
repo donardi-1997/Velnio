@@ -10,6 +10,7 @@ from app.api.deps import get_current_user, get_current_workspace
 from app.db.session import get_db
 from app.models.user import User
 from app.models.workspace import Workspace
+from app.modules.campaigns.application.meta_ads_ads import MetaAdsAdPublishingService
 from app.modules.campaigns.application.meta_ads_adsets import MetaAdsAdSetPublishingService
 from app.modules.campaigns.application.meta_ads_creatives import MetaAdsCreativePublishingService
 from app.modules.campaigns.application.meta_ads_publishing import MetaAdsCampaignPublishingService
@@ -39,6 +40,10 @@ class MetaCreativePublishRequest(BaseModel):
     primary_text: str = Field(min_length=1, max_length=5000)
     headline: str | None = Field(default=None, max_length=255)
     call_to_action: Literal["SHOP_NOW", "LEARN_MORE", "GET_OFFER"] = "SHOP_NOW"
+
+
+class MetaAdPublishRequest(BaseModel):
+    creative_publication_id: UUID
 
 
 class MetaCampaignPublicationResponse(BaseModel):
@@ -87,6 +92,18 @@ class MetaCreativePublicationResponse(BaseModel):
     call_to_action: str
     page_id: str
     instagram_account_id: str | None
+    created_at: datetime
+    reused: bool = False
+
+
+class MetaAdPublicationResponse(BaseModel):
+    id: str
+    campaign_publication_id: str
+    ad_set_publication_id: str
+    creative_publication_id: str
+    remote_ad_id: str
+    remote_ad_name: str
+    remote_status: str
     created_at: datetime
     reused: bool = False
 
@@ -216,4 +233,42 @@ async def publish_meta_creative(
         data.primary_text,
         data.headline,
         data.call_to_action,
+    )
+
+
+@router.get(
+    "/{campaign_id}/meta-ads/publications/{publication_id}/ads",
+    response_model=list[MetaAdPublicationResponse],
+)
+async def list_meta_ads(
+    campaign_id: UUID,
+    publication_id: UUID,
+    workspace: Workspace = Depends(get_current_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    return await MetaAdsAdPublishingService(db).list_ads(
+        campaign_id,
+        publication_id,
+        workspace.id,
+    )
+
+
+@router.post(
+    "/{campaign_id}/meta-ads/publications/{publication_id}/ads",
+    response_model=MetaAdPublicationResponse,
+)
+async def publish_meta_ad_paused(
+    campaign_id: UUID,
+    publication_id: UUID,
+    data: MetaAdPublishRequest,
+    workspace: Workspace = Depends(get_current_workspace),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await MetaAdsAdPublishingService(db).publish_paused_ad(
+        campaign_id,
+        publication_id,
+        workspace.id,
+        user.id,
+        data.creative_publication_id,
     )
