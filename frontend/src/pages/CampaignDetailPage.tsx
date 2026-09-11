@@ -6,6 +6,7 @@ import type { Campaign, Offer, SellingAngle, CampaignImage, GoogleDriveFile } fr
 import { CampaignPerformanceTab } from './CampaignPerformanceTab'
 import { CampaignExperimentsTab } from './CampaignExperimentsTab'
 import { GoogleDriveBrowser } from '../components/GoogleDriveBrowser'
+import { MetaAdsPublishPanel } from '../components/MetaAdsPublishPanel'
 
 const statusColors: Record<string, string> = {
   DRAFT: 'bg-gray-500/20 text-gray-400',
@@ -801,28 +802,31 @@ export function CampaignDetailPage() {
       )}
 
       {activeTab === 'publish' && (
-        <div className="bg-zinc-800 rounded-xl p-6 space-y-6">
-          <div>
-            <h3 className="font-semibold text-zinc-100 mb-2">Publish Status</h3>
-            <div className="flex items-center gap-3">
-              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusColors[campaign.status] || ''}`}>
-                {campaign.status}
-              </span>
-              {campaign.published_at && (
-                <span className="text-sm text-zinc-400">Published {new Date(campaign.published_at).toLocaleString()}</span>
+        <div className="space-y-6">
+          <div className="bg-zinc-800 rounded-xl p-6 space-y-6">
+            <div>
+              <h3 className="font-semibold text-zinc-100 mb-2">Shopify Publish Status</h3>
+              <div className="flex items-center gap-3">
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusColors[campaign.status] || ''}`}>
+                  {campaign.status}
+                </span>
+                {campaign.published_at && (
+                  <span className="text-sm text-zinc-400">Published {new Date(campaign.published_at).toLocaleString()}</span>
+                )}
+              </div>
+              {campaign.last_publish_error && (
+                <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400">
+                  {campaign.last_publish_error}
+                </div>
               )}
             </div>
-            {campaign.last_publish_error && (
-              <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400">
-                {campaign.last_publish_error}
-              </div>
-            )}
+            <div>
+              <button onClick={() => publishMutation.mutate()} className="btn-primary" disabled={publishMutation.isPending || campaign.status === 'PUBLISHED'}>
+                {publishMutation.isPending ? 'Publishing...' : campaign.status === 'PUBLISHED' ? 'Already Published' : 'Publish to Shopify'}
+              </button>
+            </div>
           </div>
-          <div>
-            <button onClick={() => publishMutation.mutate()} className="btn-primary" disabled={publishMutation.isPending || campaign.status === 'PUBLISHED'}>
-              {publishMutation.isPending ? 'Publishing...' : campaign.status === 'PUBLISHED' ? 'Already Published' : 'Publish Campaign'}
-            </button>
-          </div>
+          <MetaAdsPublishPanel campaignId={id!} />
         </div>
       )}
 
