@@ -50,7 +50,6 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["product_image_id"], ["product_images.id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["created_by_user_id"], ["users.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("idempotency_key"),
         sa.UniqueConstraint("remote_creative_id"),
     )
     op.create_index(
