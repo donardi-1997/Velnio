@@ -8,8 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ForbiddenException
 from app.models.campaign import Campaign, CampaignStatus
-from app.models.meta_ads import MetaAdsCampaignPublication, MetaAdsConnection, MetaAdsCreativePublication
+from app.models.meta_ads import (
+    MetaAdsAdSetPublication,
+    MetaAdsCampaignPublication,
+    MetaAdsConnection,
+    MetaAdsCreativePublication,
+    MetaAdsLaunchIntent,
+)
 from app.models.store import Store, StoreStatus
+from app.modules.campaigns.application.meta_ads_launch_intents import MetaAdsLaunchIntentService
 
 
 async def _register(client: AsyncClient, email: str) -> str:
@@ -29,6 +36,13 @@ def _path(campaign_id: str, publication_id: str, ad_id: str) -> str:
     return (
         f"/api/campaigns/{campaign_id}/meta-ads/publications/{publication_id}"
         f"/ads/{ad_id}/launch-readiness"
+    )
+
+
+def _intent_path(campaign_id: str, publication_id: str, ad_id: str) -> str:
+    return (
+        f"/api/campaigns/{campaign_id}/meta-ads/publications/{publication_id}"
+        f"/ads/{ad_id}/launch-intent"
     )
 
 
@@ -149,6 +163,7 @@ async def test_meta_launch_readiness_happy_path_is_read_only(
     payload = response.json()
     assert payload["ready"] is True
     assert payload["side_effects_performed"] is False
+    assert len(payload["readiness_fingerprint"]) == 64
     assert all(item["status"] == "PASS" for item in payload["checks"])
     plan = payload["launch_plan"]
     assert plan["remote_campaign_id"] == publication["remote_campaign_id"]
@@ -278,6 +293,137 @@ async def test_meta_launch_readiness_is_workspace_isolated(
 
     response = await client.get(
         _path(campaign_id, publication["id"], ad["id"]),
+        headers=_headers(other),
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_meta_launch_readiness_fingerprint_changes_when_budget_changes(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    token = await _register(client, "meta-readiness-fingerprint@test.com")
+    campaign_id, publication, ad, _ = await _setup_ready(client, db_session, token)
+    first = await client.get(
+        _path(campaign_id, publication["id"], ad["id"]),
+        headers=_headers(token),
+    )
+    assert first.status_code == 200
+    assert first.json()["ready"] is True
+
+    result = await db_session.execute(
+        select(MetaAdsAdSetPublication).where(
+            MetaAdsAdSetPublication.id == UUID(ad["ad_set_publication_id"])
+        )
+    )
+    ad_set = result.scalar_one()
+    ad_set.daily_budget_minor = 3500
+    await db_session.commit()
+
+    second = await client.get(
+        _path(campaign_id, publication["id"], ad["id"]),
+        headers=_headers(token),
+    )
+    assert second.status_code == 200
+    assert second.json()["ready"] is True
+    assert first.json()["readiness_fingerprint"] != second.json()["readiness_fingerprint"]
+
+
+@pytest.mark.asyncio
+async def test_meta_launch_intent_stores_only_token_hash_and_expires_shortly(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    token = await _register(client, "meta-launch-intent@test.com")
+    campaign_id, publication, ad, _ = await _setup_ready(client, db_session, token)
+    readiness = await client.get(
+        _path(campaign_id, publication["id"], ad["id"]),
+        headers=_headers(token),
+    )
+    assert readiness.status_code == 200
+
+    response = await client.post(
+        _intent_path(campaign_id, publication["id"], ad["id"]),
+        headers=_headers(token),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "PENDING_CONFIRMATION"
+    assert payload["side_effects_performed"] is False
+    assert payload["readiness_fingerprint"] == readiness.json()["readiness_fingerprint"]
+    assert len(payload["confirmation_token"]) >= 32
+
+    result = await db_session.execute(
+        select(MetaAdsLaunchIntent).where(MetaAdsLaunchIntent.id == UUID(payload["id"]))
+    )
+    row = result.scalar_one()
+    assert row.token_hash != payload["confirmation_token"]
+    assert row.token_hash == MetaAdsLaunchIntentService.hash_token(payload["confirmation_token"])
+    assert row.consumed_at is None
+    lifetime_seconds = (row.expires_at - row.created_at).total_seconds()
+    assert 540 <= lifetime_seconds <= 660
+
+
+@pytest.mark.asyncio
+async def test_meta_launch_intent_invalidates_previous_for_same_user_and_ad(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    token = await _register(client, "meta-launch-intent-replace@test.com")
+    campaign_id, publication, ad, _ = await _setup_ready(client, db_session, token)
+    path = _intent_path(campaign_id, publication["id"], ad["id"])
+
+    first = await client.post(path, headers=_headers(token))
+    second = await client.post(path, headers=_headers(token))
+    assert first.status_code == second.status_code == 200
+    assert first.json()["confirmation_token"] != second.json()["confirmation_token"]
+
+    result = await db_session.execute(
+        select(MetaAdsLaunchIntent)
+        .where(MetaAdsLaunchIntent.ad_publication_id == UUID(ad["id"]))
+        .order_by(MetaAdsLaunchIntent.created_at.asc())
+    )
+    rows = result.scalars().all()
+    assert len(rows) == 2
+    assert rows[0].consumed_at is not None
+    assert rows[1].consumed_at is None
+
+
+@pytest.mark.asyncio
+async def test_meta_launch_intent_refuses_when_readiness_fails(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    token = await _register(client, "meta-launch-intent-not-ready@test.com")
+    campaign_id, publication, ad, _ = await _setup_ready(client, db_session, token)
+    result = await db_session.execute(select(MetaAdsConnection).where(MetaAdsConnection.is_active == True))
+    connection = result.scalar_one()
+    connection.scopes = "ads_read"
+    await db_session.commit()
+
+    response = await client.post(
+        _intent_path(campaign_id, publication["id"], ad["id"]),
+        headers=_headers(token),
+    )
+    assert response.status_code == 400
+    assert "readiness" in response.json()["detail"].lower()
+
+    rows = await db_session.execute(select(MetaAdsLaunchIntent))
+    assert rows.scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_meta_launch_intent_is_workspace_isolated(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    owner = await _register(client, "meta-launch-intent-owner@test.com")
+    other = await _register(client, "meta-launch-intent-other@test.com")
+    campaign_id, publication, ad, _ = await _setup_ready(client, db_session, owner)
+
+    response = await client.post(
+        _intent_path(campaign_id, publication["id"], ad["id"]),
         headers=_headers(other),
     )
     assert response.status_code == 404
