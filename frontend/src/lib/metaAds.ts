@@ -125,6 +125,17 @@ export interface MetaAdPublication {
   reused?: boolean
 }
 
+export interface MetaAdRemoteState {
+  ad_publication_id: string
+  remote_ad_id: string
+  account_id: string
+  campaign_id: string
+  adset_id: string
+  creative_id: string
+  configured_status: string
+  effective_status: string | null
+}
+
 export const metaAdsApi = {
   status: () => request<MetaAdsStatus>('/meta-ads/status'),
   startConnection: () => request<{ auth_url: string; mode: string }>('/meta-ads/connect'),
@@ -161,6 +172,8 @@ export const metaAdsApi = {
     }),
   ads: (campaignId: string, publicationId: string) =>
     request<MetaAdPublication[]>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ads`),
+  adRemoteState: (campaignId: string, publicationId: string, adPublicationId: string) =>
+    request<MetaAdRemoteState>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ads/${adPublicationId}/remote-state`),
   publishAdPaused: (campaignId: string, publicationId: string, creativePublicationId: string) =>
     request<MetaAdPublication>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ads`, {
       method: 'POST',
