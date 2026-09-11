@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import hashlib
+import re
 import secrets
 from uuid import UUID
 
@@ -178,6 +179,30 @@ class MetaAdsConnectionService:
         except MetaAdsProviderError as exc:
             logger.warning("Meta Ads account discovery failed: %s", type(exc).__name__)
             raise BadRequestException("Could not load Meta ad accounts") from exc
+
+    async def get_delivery_resources(self, workspace_id: UUID, ad_account_id: str) -> dict:
+        if not re.fullmatch(r"act_[0-9]+", ad_account_id):
+            raise BadRequestException("Invalid Meta ad account id")
+
+        access_token = await self.get_valid_token(workspace_id)
+        provider = get_meta_ads_provider()
+        try:
+            accounts = await provider.list_ad_accounts(access_token)
+        except MetaAdsProviderError as exc:
+            logger.warning("Meta Ads account authorization check failed: %s", type(exc).__name__)
+            raise BadRequestException("Could not validate Meta ad account access") from exc
+
+        account = next((item for item in accounts if item.get("id") == ad_account_id), None)
+        if account is None:
+            raise ForbiddenException("Meta ad account is not accessible to this workspace connection")
+        if account.get("account_status") not in {None, 1}:
+            raise ForbiddenException("Meta ad account is not active")
+
+        try:
+            return await provider.get_delivery_resources(access_token, ad_account_id)
+        except MetaAdsProviderError as exc:
+            logger.warning("Meta Ads delivery resource discovery failed: %s", type(exc).__name__)
+            raise BadRequestException("Could not load Meta delivery resources") from exc
 
     async def get_valid_token(self, workspace_id: UUID) -> str:
         connection = await self.get_active_connection(workspace_id)
