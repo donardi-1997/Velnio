@@ -9,10 +9,12 @@ from app.api.deps import get_current_user, get_current_workspace
 from app.db.session import get_db
 from app.models.user import User
 from app.models.workspace import Workspace
+from app.modules.campaigns.application.meta_ads_adsets import MetaAdsAdSetPublishingService
 from app.modules.campaigns.application.meta_ads_publishing import MetaAdsCampaignPublishingService
 
 
 router = APIRouter()
+MAX_SAFE_DAILY_BUDGET_MINOR = 9_007_199_254_740_991
 
 
 class MetaCampaignPublishRequest(BaseModel):
@@ -23,6 +25,11 @@ class MetaDeliveryConfigRequest(BaseModel):
     pixel_id: str = Field(pattern=r"^[0-9]+$", max_length=128)
     page_id: str = Field(pattern=r"^[0-9]+$", max_length=128)
     instagram_account_id: str | None = Field(default=None, pattern=r"^[0-9]+$", max_length=128)
+
+
+class MetaAdSetPublishRequest(BaseModel):
+    daily_budget_minor: int = Field(gt=0, le=MAX_SAFE_DAILY_BUDGET_MINOR)
+    target_country: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$", max_length=2)
 
 
 class MetaCampaignPublicationResponse(BaseModel):
@@ -37,6 +44,22 @@ class MetaCampaignPublicationResponse(BaseModel):
     page_id: str | None = None
     instagram_account_id: str | None = None
     delivery_configured_at: datetime | None = None
+    created_at: datetime
+    reused: bool = False
+
+
+class MetaAdSetPublicationResponse(BaseModel):
+    id: str
+    campaign_publication_id: str
+    remote_ad_set_id: str
+    remote_ad_set_name: str
+    remote_status: str
+    target_country: str
+    daily_budget_minor: int
+    currency: str
+    optimization_goal: str
+    billing_event: str
+    bid_strategy: str
     created_at: datetime
     reused: bool = False
 
@@ -86,4 +109,43 @@ async def configure_meta_campaign_delivery(
         data.pixel_id,
         data.page_id,
         data.instagram_account_id,
+    )
+
+
+@router.get(
+    "/{campaign_id}/meta-ads/publications/{publication_id}/ad-set",
+    response_model=MetaAdSetPublicationResponse | None,
+)
+async def get_meta_ad_set(
+    campaign_id: UUID,
+    publication_id: UUID,
+    workspace: Workspace = Depends(get_current_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    return await MetaAdsAdSetPublishingService(db).get_ad_set(
+        campaign_id,
+        publication_id,
+        workspace.id,
+    )
+
+
+@router.post(
+    "/{campaign_id}/meta-ads/publications/{publication_id}/ad-set",
+    response_model=MetaAdSetPublicationResponse,
+)
+async def publish_meta_ad_set_paused(
+    campaign_id: UUID,
+    publication_id: UUID,
+    data: MetaAdSetPublishRequest,
+    workspace: Workspace = Depends(get_current_workspace),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await MetaAdsAdSetPublishingService(db).publish_paused_ad_set(
+        campaign_id,
+        publication_id,
+        workspace.id,
+        user.id,
+        data.daily_budget_minor,
+        data.target_country,
     )
