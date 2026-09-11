@@ -178,6 +178,19 @@ export interface MetaLaunchIntent {
   side_effects_performed: boolean
 }
 
+export interface MetaLaunchConfirmation {
+  intent_id: string
+  status: 'SUCCEEDED'
+  remote_campaign_status: 'ACTIVE'
+  remote_ad_set_status: 'ACTIVE'
+  remote_ad_status: 'ACTIVE'
+  daily_budget_minor: number
+  currency: string
+  target_country: string
+  destination_url: string
+  activated_at: string
+}
+
 export const metaAdsApi = {
   status: () => request<MetaAdsStatus>('/meta-ads/status'),
   startConnection: () => request<{ auth_url: string; mode: string }>('/meta-ads/connect'),
@@ -221,6 +234,23 @@ export const metaAdsApi = {
   createLaunchIntent: (campaignId: string, publicationId: string, adPublicationId: string) =>
     request<MetaLaunchIntent>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ads/${adPublicationId}/launch-intent`, {
       method: 'POST',
+    }),
+  confirmLaunch: (
+    campaignId: string,
+    publicationId: string,
+    adPublicationId: string,
+    intent: MetaLaunchIntent,
+    dailyBudgetMinor: number,
+  ) =>
+    request<MetaLaunchConfirmation>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ads/${adPublicationId}/launch-confirm`, {
+      method: 'POST',
+      body: JSON.stringify({
+        intent_id: intent.id,
+        confirmation_token: intent.confirmation_token,
+        acknowledged_readiness_fingerprint: intent.readiness_fingerprint,
+        acknowledged_daily_budget_minor: dailyBudgetMinor,
+        confirm_spend: true,
+      }),
     }),
   publishAdPaused: (campaignId: string, publicationId: string, creativePublicationId: string) =>
     request<MetaAdPublication>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ads`, {
