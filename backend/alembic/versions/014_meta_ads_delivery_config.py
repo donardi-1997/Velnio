@@ -14,6 +14,8 @@ down_revision = "013_meta_ads_campaign_publications"
 branch_labels = None
 depends_on = None
 
+DELIVERY_CONFIG_USER_FK = "fk_meta_pub_delivery_user"
+
 
 def upgrade() -> None:
     op.add_column(
@@ -37,7 +39,7 @@ def upgrade() -> None:
         sa.Column("delivery_configured_by_user_id", postgresql.UUID(as_uuid=True), nullable=True),
     )
     op.create_foreign_key(
-        "fk_meta_ads_campaign_publications_delivery_configured_by_user_id_users",
+        DELIVERY_CONFIG_USER_FK,
         "meta_ads_campaign_publications",
         "users",
         ["delivery_configured_by_user_id"],
@@ -48,7 +50,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_constraint(
-        "fk_meta_ads_campaign_publications_delivery_configured_by_user_id_users",
+        DELIVERY_CONFIG_USER_FK,
         "meta_ads_campaign_publications",
         type_="foreignkey",
     )
