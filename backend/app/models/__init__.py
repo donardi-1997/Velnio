@@ -14,7 +14,12 @@ from app.models.enrichment import ProductEnrichment
 from app.models.visual_direction import CampaignVisualDirection
 from app.models.tracking import TrackingEvent, LandingVariant, CampaignPerformanceInsight
 from app.models.google_drive import GoogleDriveConnection, GoogleDriveOAuthState, ProductSourceDocument
-from app.models.meta_ads import MetaAdsCampaignPublication, MetaAdsConnection, MetaAdsOAuthState
+from app.models.meta_ads import (
+    MetaAdsAdSetPublication,
+    MetaAdsCampaignPublication,
+    MetaAdsConnection,
+    MetaAdsOAuthState,
+)
 from app.models.knowledge import KnowledgeSource
 from app.models.brief import CampaignBrief
 
@@ -28,6 +33,6 @@ __all__ = [
     "ProductEnrichment", "CampaignVisualDirection",
     "TrackingEvent", "LandingVariant", "CampaignPerformanceInsight",
     "GoogleDriveConnection", "GoogleDriveOAuthState", "ProductSourceDocument",
-    "MetaAdsConnection", "MetaAdsOAuthState", "MetaAdsCampaignPublication",
+    "MetaAdsConnection", "MetaAdsOAuthState", "MetaAdsCampaignPublication", "MetaAdsAdSetPublication",
     "KnowledgeSource", "CampaignBrief",
 ]
