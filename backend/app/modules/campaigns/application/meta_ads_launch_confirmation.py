@@ -175,24 +175,26 @@ class MetaAdsLaunchConfirmationService:
                 "activated_at": intent.activation_completed_at,
             }
         except Exception as exc:
-            if isinstance(exc, (BadRequestException, ForbiddenException)) and not external_started:
+            if not external_started:
                 await self._record_failure(
                     intent,
                     "FAILED",
                     "Launch stopped before any Meta status write",
                 )
-                raise
+                if isinstance(exc, (BadRequestException, ForbiddenException)):
+                    raise
+                raise BadGatewayException(
+                    "Meta Ads launch failed before any status write"
+                ) from exc
 
             logger.warning("Meta Ads launch failed: %s", type(exc).__name__)
-            safely_paused = False
-            if external_started:
-                safely_paused = await self._best_effort_pause_hierarchy(
-                    workspace_id,
-                    publication,
-                    ad_set,
-                    creative,
-                    ad,
-                )
+            safely_paused = await self._best_effort_pause_hierarchy(
+                workspace_id,
+                publication,
+                ad_set,
+                creative,
+                ad,
+            )
 
             if safely_paused:
                 await self._record_failure(
