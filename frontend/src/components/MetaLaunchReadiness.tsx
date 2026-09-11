@@ -108,7 +108,7 @@ export function MetaLaunchReadiness({ campaignId, publicationId, ad }: MetaLaunc
                   {check.status}
                 </span>
                 <div className="min-w-0">
-                  <p className="font-medium text-zinc-300">{check.key.replaceAll('_', ' ')}</p>
+                  <p className="font-medium text-zinc-300">{check.key.replace(/_/g, ' ')}</p>
                   <p className="mt-0.5 text-zinc-500">{check.message}</p>
                 </div>
               </div>
