@@ -212,3 +212,48 @@ class MetaAdsAdPublication(UUIDMixin, TimestampMixin, Base):
             name="uq_meta_ads_ad_publication_adset_creative",
         ),
     )
+
+
+class MetaAdsLaunchIntent(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "meta_ads_launch_intents"
+
+    workspace_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    campaign_publication_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("meta_ads_campaign_publications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    ad_set_publication_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("meta_ads_ad_set_publications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    creative_publication_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("meta_ads_creative_publications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    ad_publication_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("meta_ads_ad_publications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_by_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    readiness_fingerprint = Column(String(64), nullable=False, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
