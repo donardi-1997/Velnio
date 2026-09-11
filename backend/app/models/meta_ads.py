@@ -73,6 +73,15 @@ class MetaAdsCampaignPublication(UUIDMixin, TimestampMixin, Base):
     remote_campaign_name = Column(String(512), nullable=False)
     objective = Column(String(64), nullable=False, default="OUTCOME_SALES")
     remote_status = Column(String(32), nullable=False, default="PAUSED")
+    pixel_id = Column(String(128), nullable=True)
+    page_id = Column(String(128), nullable=True)
+    instagram_account_id = Column(String(128), nullable=True)
+    delivery_configured_at = Column(DateTime(timezone=True), nullable=True)
+    delivery_configured_by_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     __table_args__ = (
         UniqueConstraint(
