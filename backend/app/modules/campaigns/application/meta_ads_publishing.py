@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import re
 from uuid import UUID
 
@@ -108,6 +109,60 @@ class MetaAdsCampaignPublishingService:
         payload["reused"] = bool(remote.get("reused"))
         return payload
 
+    async def configure_delivery(
+        self,
+        campaign_id: UUID,
+        publication_id: UUID,
+        workspace_id: UUID,
+        user_id: UUID,
+        pixel_id: str,
+        page_id: str,
+        instagram_account_id: str | None,
+    ) -> dict:
+        await self._require_admin_membership(workspace_id, user_id)
+        await self._get_campaign(campaign_id, workspace_id, lock=False)
+
+        result = await self.db.execute(
+            select(MetaAdsCampaignPublication)
+            .where(
+                MetaAdsCampaignPublication.id == publication_id,
+                MetaAdsCampaignPublication.campaign_id == campaign_id,
+                MetaAdsCampaignPublication.workspace_id == workspace_id,
+            )
+            .with_for_update()
+        )
+        publication = result.scalar_one_or_none()
+        if publication is None:
+            raise NotFoundException("Meta Ads campaign publication")
+        if publication.remote_status != "PAUSED":
+            raise ForbiddenException("Meta campaign must remain PAUSED while configuring delivery")
+
+        resources = await self.connection_service.get_delivery_resources(
+            workspace_id,
+            publication.ad_account_id,
+        )
+        pixel_ids = {item.get("id") for item in resources.get("pixels", []) if item.get("id")}
+        page_ids = {item.get("id") for item in resources.get("pages", []) if item.get("id")}
+        instagram_ids = {
+            item.get("id") for item in resources.get("instagram_accounts", []) if item.get("id")
+        }
+
+        if pixel_id not in pixel_ids:
+            raise ForbiddenException("Selected Meta Pixel is not available to this ad account")
+        if page_id not in page_ids:
+            raise ForbiddenException("Selected Facebook Page is not available to this ad account")
+        if instagram_account_id is not None and instagram_account_id not in instagram_ids:
+            raise ForbiddenException("Selected Instagram account is not available to this ad account")
+
+        publication.pixel_id = pixel_id
+        publication.page_id = page_id
+        publication.instagram_account_id = instagram_account_id
+        publication.delivery_configured_at = datetime.now(timezone.utc).replace(microsecond=0)
+        publication.delivery_configured_by_user_id = user_id
+        await self.db.flush()
+        await self.db.refresh(publication)
+        return self._serialize(publication)
+
     async def _get_campaign(self, campaign_id: UUID, workspace_id: UUID, *, lock: bool) -> Campaign:
         query = select(Campaign).where(
             Campaign.id == campaign_id,
@@ -157,5 +212,9 @@ class MetaAdsCampaignPublishingService:
             "remote_campaign_name": publication.remote_campaign_name,
             "objective": publication.objective,
             "remote_status": publication.remote_status,
+            "pixel_id": publication.pixel_id,
+            "page_id": publication.page_id,
+            "instagram_account_id": publication.instagram_account_id,
+            "delivery_configured_at": publication.delivery_configured_at,
             "created_at": publication.created_at,
         }
