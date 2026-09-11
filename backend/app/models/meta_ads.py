@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.db.base import Base
@@ -90,3 +90,35 @@ class MetaAdsCampaignPublication(UUIDMixin, TimestampMixin, Base):
             name="uq_meta_ads_campaign_publication_campaign_account",
         ),
     )
+
+
+class MetaAdsAdSetPublication(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "meta_ads_ad_set_publications"
+
+    workspace_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    campaign_publication_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("meta_ads_campaign_publications.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    created_by_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    remote_ad_set_id = Column(String(128), nullable=False, unique=True)
+    remote_ad_set_name = Column(String(512), nullable=False)
+    remote_status = Column(String(32), nullable=False, default="PAUSED")
+    target_country = Column(String(2), nullable=False)
+    daily_budget_minor = Column(BigInteger, nullable=False)
+    currency = Column(String(3), nullable=False)
+    optimization_goal = Column(String(64), nullable=False, default="OFFSITE_CONVERSIONS")
+    billing_event = Column(String(64), nullable=False, default="IMPRESSIONS")
+    bid_strategy = Column(String(64), nullable=False, default="LOWEST_COST_WITHOUT_CAP")
