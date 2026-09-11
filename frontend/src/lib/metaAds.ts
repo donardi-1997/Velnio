@@ -86,6 +86,33 @@ export interface MetaAdSetPublishInput {
   target_country?: string | null
 }
 
+export type MetaCallToAction = 'SHOP_NOW' | 'LEARN_MORE' | 'GET_OFFER'
+
+export interface MetaCreativePublication {
+  id: string
+  campaign_publication_id: string
+  ad_set_publication_id: string
+  product_image_id: string | null
+  remote_creative_id: string
+  remote_creative_name: string
+  destination_url: string
+  image_url: string
+  primary_text: string
+  headline: string | null
+  call_to_action: MetaCallToAction
+  page_id: string
+  instagram_account_id: string | null
+  created_at: string
+  reused?: boolean
+}
+
+export interface MetaCreativePublishInput {
+  product_image_id: string
+  primary_text: string
+  headline?: string | null
+  call_to_action: MetaCallToAction
+}
+
 export const metaAdsApi = {
   status: () => request<MetaAdsStatus>('/meta-ads/status'),
   startConnection: () => request<{ auth_url: string; mode: string }>('/meta-ads/connect'),
@@ -110,6 +137,13 @@ export const metaAdsApi = {
     request<MetaAdSetPublication | null>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ad-set`),
   publishAdSetPaused: (campaignId: string, publicationId: string, data: MetaAdSetPublishInput) =>
     request<MetaAdSetPublication>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ad-set`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  creatives: (campaignId: string, publicationId: string) =>
+    request<MetaCreativePublication[]>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/creatives`),
+  publishCreative: (campaignId: string, publicationId: string, data: MetaCreativePublishInput) =>
+    request<MetaCreativePublication>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/creatives`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
