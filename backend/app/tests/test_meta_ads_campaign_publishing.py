@@ -1,3 +1,5 @@
+from uuid import UUID
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
@@ -89,7 +91,7 @@ async def test_meta_campaign_repeat_publish_is_idempotent(
 
     result = await db_session.execute(
         select(MetaAdsCampaignPublication).where(
-            MetaAdsCampaignPublication.campaign_id == campaign_id,
+            MetaAdsCampaignPublication.campaign_id == UUID(campaign_id),
             MetaAdsCampaignPublication.ad_account_id == "act_1000000001",
         )
     )
