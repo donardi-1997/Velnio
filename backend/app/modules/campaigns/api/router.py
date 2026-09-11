@@ -6,6 +6,7 @@ from app.modules.campaigns.api import (
     campaigns,
     demo,
     landings,
+    meta_ads,
     offers,
     publishing,
     variants,
@@ -27,5 +28,6 @@ for feature_router in (
     visual_assets.router,
     variants.router,
     demo.router,
+    meta_ads.router,
 ):
     router.include_router(feature_router, prefix="/campaigns")
