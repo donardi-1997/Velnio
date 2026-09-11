@@ -60,6 +60,9 @@ class MetaAdsLaunchIntentService:
         )
         for previous in previous_result.scalars().all():
             previous.consumed_at = now
+            previous.activation_status = "REPLACED"
+            previous.activation_completed_at = now
+            previous.last_activation_error = None
 
         confirmation_token = secrets.token_urlsafe(32)
         token_hash = self.hash_token(confirmation_token)
@@ -75,6 +78,7 @@ class MetaAdsLaunchIntentService:
             readiness_fingerprint=readiness["readiness_fingerprint"],
             expires_at=expires_at,
             consumed_at=None,
+            activation_status="PENDING_CONFIRMATION",
         )
         self.db.add(row)
         await self.db.flush()
