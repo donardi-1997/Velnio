@@ -37,6 +37,14 @@ class MetaAdsProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def get_delivery_resources(
+        self,
+        access_token: str,
+        ad_account_id: str,
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
     async def ensure_paused_campaign(
         self,
         access_token: str,
@@ -58,6 +66,13 @@ class UnsupportedMetaAdsProvider(MetaAdsProvider):
         raise MetaAdsProviderError("Unsupported Meta Ads provider mode")
 
     async def list_ad_accounts(self, access_token: str) -> list[dict[str, Any]]:
+        raise MetaAdsProviderError("Unsupported Meta Ads provider mode")
+
+    async def get_delivery_resources(
+        self,
+        access_token: str,
+        ad_account_id: str,
+    ) -> dict[str, Any]:
         raise MetaAdsProviderError("Unsupported Meta Ads provider mode")
 
     async def ensure_paused_campaign(
@@ -103,6 +118,34 @@ class MockMetaAdsProvider(MetaAdsProvider):
                 "timezone_name": "America/Bogota",
             },
         ]
+
+    async def get_delivery_resources(
+        self,
+        access_token: str,
+        ad_account_id: str,
+    ) -> dict[str, Any]:
+        self._validate_ad_account_id(ad_account_id)
+        suffix = ad_account_id.removeprefix("act_")
+        return {
+            "ad_account_id": ad_account_id,
+            "pixels": [
+                {
+                    "id": f"{suffix}501",
+                    "name": "Velnio Demo Pixel",
+                    "last_fired_time": "2026-09-10T18:00:00+0000",
+                }
+            ],
+            "pages": [
+                {"id": f"{suffix}601", "name": "Velnio Demo Page"},
+            ],
+            "instagram_accounts": [
+                {
+                    "id": f"{suffix}701",
+                    "name": "Velnio Demo Instagram",
+                    "username": "velnio_demo",
+                }
+            ],
+        }
 
     async def ensure_paused_campaign(
         self,
@@ -196,40 +239,71 @@ class RealMetaAdsProvider(MetaAdsProvider):
         }
 
     async def list_ad_accounts(self, access_token: str) -> list[dict[str, Any]]:
-        accounts: list[dict[str, Any]] = []
-        after: str | None = None
-        for _ in range(10):
-            params: dict[str, Any] = {
-                "fields": "id,account_id,name,account_status,currency,timezone_name",
-                "limit": 100,
-                "access_token": access_token,
-            }
-            if after:
-                params["after"] = after
-            payload = await self._get_json(f"{self.graph_base}/me/adaccounts", params=params)
-            data = payload.get("data")
-            if not isinstance(data, list):
-                raise MetaAdsProviderError("Meta returned an invalid ad account response")
-            for item in data:
-                if not isinstance(item, dict):
-                    continue
-                account_id = item.get("id")
-                if not isinstance(account_id, str) or not account_id.startswith("act_"):
-                    continue
-                accounts.append(
-                    {
-                        "id": account_id,
-                        "account_id": str(item.get("account_id") or account_id.removeprefix("act_")),
-                        "name": str(item.get("name") or "Unnamed ad account"),
-                        "account_status": item.get("account_status"),
-                        "currency": item.get("currency"),
-                        "timezone_name": item.get("timezone_name"),
-                    }
-                )
-            after = self._next_cursor(payload, after)
-            if after is None:
-                break
-        return accounts
+        accounts = await self._list_edge(
+            f"{self.graph_base}/me/adaccounts",
+            access_token,
+            fields="id,account_id,name,account_status,currency,timezone_name",
+            max_pages=10,
+        )
+        normalized: list[dict[str, Any]] = []
+        for item in accounts:
+            account_id = item.get("id")
+            if not isinstance(account_id, str) or not account_id.startswith("act_"):
+                continue
+            normalized.append(
+                {
+                    "id": account_id,
+                    "account_id": str(item.get("account_id") or account_id.removeprefix("act_")),
+                    "name": str(item.get("name") or "Unnamed ad account"),
+                    "account_status": item.get("account_status"),
+                    "currency": item.get("currency"),
+                    "timezone_name": item.get("timezone_name"),
+                }
+            )
+        return normalized
+
+    async def get_delivery_resources(
+        self,
+        access_token: str,
+        ad_account_id: str,
+    ) -> dict[str, Any]:
+        self._require_config()
+        self._validate_ad_account_id(ad_account_id)
+
+        pixels_raw = await self._list_edge(
+            f"{self.graph_base}/{ad_account_id}/adspixels",
+            access_token,
+            fields="id,name,last_fired_time",
+            max_pages=10,
+        )
+        pages_raw = await self._list_edge(
+            f"{self.graph_base}/{ad_account_id}/promote_pages",
+            access_token,
+            fields="id,name",
+            max_pages=10,
+        )
+        instagram_raw = await self._list_edge(
+            f"{self.graph_base}/{ad_account_id}/connected_instagram_accounts",
+            access_token,
+            fields="id,name,username",
+            max_pages=10,
+        )
+
+        return {
+            "ad_account_id": ad_account_id,
+            "pixels": self._normalize_resources(
+                pixels_raw,
+                optional_fields=("name", "last_fired_time"),
+            ),
+            "pages": self._normalize_resources(
+                pages_raw,
+                optional_fields=("name",),
+            ),
+            "instagram_accounts": self._normalize_resources(
+                instagram_raw,
+                optional_fields=("name", "username"),
+            ),
+        }
 
     async def ensure_paused_campaign(
         self,
@@ -283,33 +357,69 @@ class RealMetaAdsProvider(MetaAdsProvider):
         ad_account_id: str,
         name: str,
     ) -> dict[str, Any] | None:
+        campaigns = await self._list_edge(
+            f"{self.graph_base}/{ad_account_id}/campaigns",
+            access_token,
+            fields="id,name,status,effective_status",
+            max_pages=20,
+        )
+        for item in campaigns:
+            if item.get("name") != name:
+                continue
+            remote_id = item.get("id")
+            if not isinstance(remote_id, str) or not remote_id:
+                raise MetaAdsProviderError("Meta returned an invalid campaign id")
+            return item
+        return None
+
+    async def _list_edge(
+        self,
+        url: str,
+        access_token: str,
+        *,
+        fields: str,
+        max_pages: int,
+    ) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
         after: str | None = None
-        for _ in range(20):
+        for _ in range(max_pages):
             params: dict[str, Any] = {
-                "fields": "id,name,status,effective_status",
+                "fields": fields,
                 "limit": 100,
                 "access_token": access_token,
             }
             if after:
                 params["after"] = after
-            payload = await self._get_json(
-                f"{self.graph_base}/{ad_account_id}/campaigns",
-                params=params,
-            )
+            payload = await self._get_json(url, params=params)
             data = payload.get("data")
             if not isinstance(data, list):
-                raise MetaAdsProviderError("Meta returned an invalid campaign list response")
-            for item in data:
-                if not isinstance(item, dict) or item.get("name") != name:
-                    continue
-                remote_id = item.get("id")
-                if not isinstance(remote_id, str) or not remote_id:
-                    raise MetaAdsProviderError("Meta returned an invalid campaign id")
-                return item
-            after = self._next_cursor(payload, after)
-            if after is None:
+                raise MetaAdsProviderError("Meta returned an invalid collection response")
+            items.extend(item for item in data if isinstance(item, dict))
+            next_after = self._next_cursor(payload, after)
+            if next_after is None:
                 break
-        return None
+            after = next_after
+        return items
+
+    @staticmethod
+    def _normalize_resources(
+        items: list[dict[str, Any]],
+        *,
+        optional_fields: tuple[str, ...],
+    ) -> list[dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        for item in items:
+            resource_id = item.get("id")
+            if not isinstance(resource_id, str) or not resource_id or resource_id in seen_ids:
+                continue
+            entry: dict[str, Any] = {"id": resource_id}
+            for field in optional_fields:
+                value = item.get(field)
+                entry[field] = value if isinstance(value, str) and value else None
+            normalized.append(entry)
+            seen_ids.add(resource_id)
+        return normalized
 
     @staticmethod
     def _next_cursor(payload: dict[str, Any], previous: str | None) -> str | None:
