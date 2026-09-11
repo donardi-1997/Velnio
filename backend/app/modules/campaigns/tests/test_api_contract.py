@@ -55,6 +55,8 @@ def test_campaign_api_preserves_expected_routes():
         ("POST", "/campaigns/{campaign_id}/meta-ads/publications/{publication_id}/ad-set"),
         ("GET", "/campaigns/{campaign_id}/meta-ads/publications/{publication_id}/creatives"),
         ("POST", "/campaigns/{campaign_id}/meta-ads/publications/{publication_id}/creatives"),
+        ("GET", "/campaigns/{campaign_id}/meta-ads/publications/{publication_id}/ads"),
+        ("POST", "/campaigns/{campaign_id}/meta-ads/publications/{publication_id}/ads"),
     }
     assert expected <= contract
 

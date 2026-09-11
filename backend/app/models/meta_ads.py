@@ -166,3 +166,49 @@ class MetaAdsCreativePublication(UUIDMixin, TimestampMixin, Base):
     call_to_action = Column(String(64), nullable=False, default="SHOP_NOW")
     page_id = Column(String(128), nullable=False)
     instagram_account_id = Column(String(128), nullable=True)
+
+
+class MetaAdsAdPublication(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "meta_ads_ad_publications"
+
+    workspace_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    campaign_publication_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("meta_ads_campaign_publications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    ad_set_publication_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("meta_ads_ad_set_publications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    creative_publication_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("meta_ads_creative_publications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_by_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    idempotency_key = Column(String(64), nullable=False, unique=True, index=True)
+    remote_ad_id = Column(String(128), nullable=False, unique=True)
+    remote_ad_name = Column(String(512), nullable=False)
+    remote_status = Column(String(32), nullable=False, default="PAUSED")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "ad_set_publication_id",
+            "creative_publication_id",
+            name="uq_meta_ads_ad_publication_adset_creative",
+        ),
+    )

@@ -29,6 +29,7 @@ export function MetaCreativePublisher({ campaignId, publication, adSet }: MetaCr
   const [headline, setHeadline] = useState('')
   const [callToAction, setCallToAction] = useState<MetaCallToAction>('SHOP_NOW')
   const [feedback, setFeedback] = useState<string | null>(null)
+  const [adFeedback, setAdFeedback] = useState<string | null>(null)
 
   const campaignQuery = useQuery({
     queryKey: ['campaign', campaignId],
@@ -38,6 +39,11 @@ export function MetaCreativePublisher({ campaignId, publication, adSet }: MetaCr
   const creativesQuery = useQuery({
     queryKey: ['meta-ads-creatives', campaignId, publication.id],
     queryFn: () => metaAdsApi.creatives(campaignId, publication.id),
+  })
+
+  const adsQuery = useQuery({
+    queryKey: ['meta-ads-ads', campaignId, publication.id],
+    queryFn: () => metaAdsApi.ads(campaignId, publication.id),
   })
 
   const publishMutation = useMutation({
@@ -55,6 +61,20 @@ export function MetaCreativePublisher({ campaignId, publication, adSet }: MetaCr
         creative.reused
           ? 'Existing standalone Meta Creative reconciled. No duplicate was created.'
           : 'Standalone Meta Creative created. No Meta Ad was created or activated.',
+      )
+    },
+  })
+
+  const publishAdMutation = useMutation({
+    mutationFn: (creativePublicationId: string) =>
+      metaAdsApi.publishAdPaused(campaignId, publication.id, creativePublicationId),
+    onMutate: () => setAdFeedback(null),
+    onSuccess: (ad) => {
+      queryClient.invalidateQueries({ queryKey: ['meta-ads-ads', campaignId, publication.id] })
+      setAdFeedback(
+        ad.reused
+          ? 'Existing PAUSED Meta Ad reconciled. No duplicate was created.'
+          : 'Meta Ad created in PAUSED state. Delivery is still disabled.',
       )
     },
   })
@@ -88,7 +108,7 @@ export function MetaCreativePublisher({ campaignId, publication, adSet }: MetaCr
             </span>
           </div>
           <p className="mt-1 text-xs text-zinc-500">
-            Creates the reusable Meta creative object only. A Creative cannot deliver until a separate Ad references it.
+            Creates the reusable Meta creative object first, then lets you attach it to a separate PAUSED Ad.
           </p>
         </div>
         <span className="rounded-full bg-zinc-700 px-2 py-1 text-xs font-medium text-zinc-300">
@@ -97,12 +117,12 @@ export function MetaCreativePublisher({ campaignId, publication, adSet }: MetaCr
       </div>
 
       <div className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-sm text-amber-200">
-        This action does not create a Meta Ad, does not activate the Campaign or Ad Set, and cannot start spend.
+        Creative creation does not create an Ad. When you explicitly create an Ad below, Velnio creates it as PAUSED only; this screen has no activation action.
       </div>
 
       {!parentsPaused && (
         <div className="mt-3 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-          Creative creation is locked because the Meta Campaign or Ad Set is not PAUSED.
+          Creative and Ad creation are locked because the Meta Campaign or Ad Set is not PAUSED.
         </div>
       )}
 
@@ -230,23 +250,82 @@ export function MetaCreativePublisher({ campaignId, publication, adSet }: MetaCr
         </div>
       )}
 
+      {adsQuery.isError && (
+        <p className="mt-3 text-sm text-red-400">Could not load existing Meta Ads.</p>
+      )}
+      {adFeedback && (
+        <div className="mt-3 rounded-lg border border-green-500/25 bg-green-500/10 px-3 py-2 text-sm text-green-300">
+          {adFeedback}
+        </div>
+      )}
+
       {creativesQuery.isError ? (
         <p className="mt-3 text-sm text-red-400">Could not load existing Meta Creatives.</p>
       ) : (creativesQuery.data || []).length > 0 ? (
-        <div className="mt-4 space-y-2">
-          {(creativesQuery.data || []).map((creative) => (
-            <div key={creative.id} className="flex flex-col gap-3 rounded-lg border border-zinc-700 bg-zinc-950/30 p-3 sm:flex-row sm:items-center">
-              <img src={creative.image_url} alt="Meta creative" className="h-14 w-14 rounded-md object-cover" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium text-zinc-200">{creative.headline || creative.primary_text}</p>
-                <p className="mt-1 truncate text-[11px] text-zinc-500">Meta Creative ID {creative.remote_creative_id}</p>
-                <p className="mt-1 truncate text-[11px] text-zinc-500" title={creative.destination_url}>{creative.destination_url}</p>
+        <div className="mt-4 space-y-3">
+          {(creativesQuery.data || []).map((creative) => {
+            const existingAd = (adsQuery.data || []).find(
+              (ad) => ad.creative_publication_id === creative.id,
+            )
+            const isCreatingThisAd = publishAdMutation.isPending && publishAdMutation.variables === creative.id
+            const thisAdFailed = publishAdMutation.isError && publishAdMutation.variables === creative.id
+
+            return (
+              <div key={creative.id} className="rounded-lg border border-zinc-700 bg-zinc-950/30 p-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <img src={creative.image_url} alt="Meta creative" className="h-14 w-14 rounded-md object-cover" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium text-zinc-200">{creative.headline || creative.primary_text}</p>
+                    <p className="mt-1 truncate text-[11px] text-zinc-500">Meta Creative ID {creative.remote_creative_id}</p>
+                    <p className="mt-1 truncate text-[11px] text-zinc-500" title={creative.destination_url}>{creative.destination_url}</p>
+                  </div>
+                  <span className="w-fit rounded-full bg-indigo-500/15 px-2 py-0.5 text-[11px] font-medium text-indigo-300">
+                    {creative.call_to_action}
+                  </span>
+                </div>
+
+                <div className="mt-3 border-t border-zinc-800 pt-3">
+                  {existingAd ? (
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-zinc-300">Meta Ad</span>
+                          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                            {existingAd.remote_status}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-zinc-500">Meta Ad ID {existingAd.remote_ad_id}</p>
+                      </div>
+                      <span className="text-xs text-zinc-500">No activation control in Velnio</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs font-medium text-zinc-300">Attach this Creative to a Meta Ad</p>
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          Velnio will revalidate the remote Campaign and Ad Set, then create the Ad as PAUSED.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-primary shrink-0 text-sm"
+                        disabled={!parentsPaused || adsQuery.isLoading || publishAdMutation.isPending}
+                        onClick={() => publishAdMutation.mutate(creative.id)}
+                      >
+                        {isCreatingThisAd ? 'Creating PAUSED Ad...' : 'Create PAUSED Ad'}
+                      </button>
+                    </div>
+                  )}
+
+                  {thisAdFailed && (
+                    <div className="mt-3 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                      {(publishAdMutation.error as Error)?.message || 'Could not create the PAUSED Meta Ad.'}
+                    </div>
+                  )}
+                </div>
               </div>
-              <span className="w-fit rounded-full bg-indigo-500/15 px-2 py-0.5 text-[11px] font-medium text-indigo-300">
-                {creative.call_to_action}
-              </span>
-            </div>
-          ))}
+            )
+          })}
         </div>
       ) : null}
     </div>
