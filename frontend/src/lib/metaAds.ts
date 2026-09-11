@@ -51,8 +51,18 @@ export interface MetaAdsCampaignPublication {
   remote_campaign_name: string
   objective: string
   remote_status: string
+  pixel_id: string | null
+  page_id: string | null
+  instagram_account_id: string | null
+  delivery_configured_at: string | null
   created_at: string
   reused?: boolean
+}
+
+export interface MetaDeliveryConfigInput {
+  pixel_id: string
+  page_id: string
+  instagram_account_id?: string | null
 }
 
 export const metaAdsApi = {
@@ -69,5 +79,10 @@ export const metaAdsApi = {
     request<MetaAdsCampaignPublication>(`/campaigns/${campaignId}/meta-ads/publish`, {
       method: 'POST',
       body: JSON.stringify({ ad_account_id: adAccountId }),
+    }),
+  configureDelivery: (campaignId: string, publicationId: string, data: MetaDeliveryConfigInput) =>
+    request<MetaAdsCampaignPublication>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/delivery-config`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     }),
 }
