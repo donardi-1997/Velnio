@@ -242,10 +242,15 @@ class RealMetaAdsProvider(MetaAdsProvider):
         self._validate_ad_account_id(ad_account_id)
         existing = await self._find_campaign_by_name(access_token, ad_account_id, name)
         if existing is not None:
+            status = existing.get("status")
+            if status != "PAUSED":
+                raise MetaAdsProviderError(
+                    "A matching Velnio Meta campaign exists but is not paused; refusing to adopt or modify it"
+                )
             return {
                 "id": existing["id"],
                 "name": name,
-                "status": existing.get("status") or "UNKNOWN",
+                "status": "PAUSED",
                 "objective": objective,
                 "reused": True,
             }
