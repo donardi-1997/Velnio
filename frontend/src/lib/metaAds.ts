@@ -113,6 +113,18 @@ export interface MetaCreativePublishInput {
   call_to_action: MetaCallToAction
 }
 
+export interface MetaAdPublication {
+  id: string
+  campaign_publication_id: string
+  ad_set_publication_id: string
+  creative_publication_id: string
+  remote_ad_id: string
+  remote_ad_name: string
+  remote_status: string
+  created_at: string
+  reused?: boolean
+}
+
 export const metaAdsApi = {
   status: () => request<MetaAdsStatus>('/meta-ads/status'),
   startConnection: () => request<{ auth_url: string; mode: string }>('/meta-ads/connect'),
@@ -146,5 +158,12 @@ export const metaAdsApi = {
     request<MetaCreativePublication>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/creatives`, {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+  ads: (campaignId: string, publicationId: string) =>
+    request<MetaAdPublication[]>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ads`),
+  publishAdPaused: (campaignId: string, publicationId: string, creativePublicationId: string) =>
+    request<MetaAdPublication>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ads`, {
+      method: 'POST',
+      body: JSON.stringify({ creative_publication_id: creativePublicationId }),
     }),
 }
