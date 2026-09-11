@@ -19,6 +19,12 @@ class MetaCampaignPublishRequest(BaseModel):
     ad_account_id: str = Field(pattern=r"^act_[0-9]+$", max_length=64)
 
 
+class MetaDeliveryConfigRequest(BaseModel):
+    pixel_id: str = Field(pattern=r"^[0-9]+$", max_length=128)
+    page_id: str = Field(pattern=r"^[0-9]+$", max_length=128)
+    instagram_account_id: str | None = Field(default=None, pattern=r"^[0-9]+$", max_length=128)
+
+
 class MetaCampaignPublicationResponse(BaseModel):
     id: str
     campaign_id: str
@@ -27,6 +33,10 @@ class MetaCampaignPublicationResponse(BaseModel):
     remote_campaign_name: str
     objective: str
     remote_status: str
+    pixel_id: str | None = None
+    page_id: str | None = None
+    instagram_account_id: str | None = None
+    delivery_configured_at: datetime | None = None
     created_at: datetime
     reused: bool = False
 
@@ -53,4 +63,27 @@ async def publish_meta_campaign_paused(
         workspace.id,
         user.id,
         data.ad_account_id,
+    )
+
+
+@router.patch(
+    "/{campaign_id}/meta-ads/publications/{publication_id}/delivery-config",
+    response_model=MetaCampaignPublicationResponse,
+)
+async def configure_meta_campaign_delivery(
+    campaign_id: UUID,
+    publication_id: UUID,
+    data: MetaDeliveryConfigRequest,
+    workspace: Workspace = Depends(get_current_workspace),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await MetaAdsCampaignPublishingService(db).configure_delivery(
+        campaign_id,
+        publication_id,
+        workspace.id,
+        user.id,
+        data.pixel_id,
+        data.page_id,
+        data.instagram_account_id,
     )
