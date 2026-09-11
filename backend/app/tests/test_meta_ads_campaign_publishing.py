@@ -161,7 +161,7 @@ async def test_meta_campaign_publish_requires_management_scope(
     )
     connection = result.scalar_one()
     connection.scopes = "ads_read"
-    await db_session.flush()
+    await db_session.commit()
 
     response = await client.post(
         f"/api/campaigns/{campaign_id}/meta-ads/publish",
