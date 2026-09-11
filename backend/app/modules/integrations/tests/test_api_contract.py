@@ -51,6 +51,7 @@ def test_meta_ads_api_exposes_connection_and_account_discovery_routes():
         ("POST", "/connect-mock"),
         ("POST", "/disconnect"),
         ("GET", "/ad-accounts"),
+        ("GET", "/ad-accounts/{ad_account_id}/delivery-resources"),
     } <= _route_contract(meta_ads_router)
 
 
