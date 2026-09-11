@@ -13,6 +13,7 @@ from app.models.workspace import Workspace
 from app.modules.campaigns.application.meta_ads_ads import MetaAdsAdPublishingService
 from app.modules.campaigns.application.meta_ads_adsets import MetaAdsAdSetPublishingService
 from app.modules.campaigns.application.meta_ads_creatives import MetaAdsCreativePublishingService
+from app.modules.campaigns.application.meta_ads_launch_readiness import MetaAdsLaunchReadinessService
 from app.modules.campaigns.application.meta_ads_publishing import MetaAdsCampaignPublishingService
 
 
@@ -117,6 +118,36 @@ class MetaAdRemoteStateResponse(BaseModel):
     creative_id: str
     configured_status: str
     effective_status: str | None = None
+
+
+class MetaLaunchCheckResponse(BaseModel):
+    key: str
+    status: Literal["PASS", "FAIL"]
+    message: str
+
+
+class MetaLaunchPlanResponse(BaseModel):
+    ad_account_id: str
+    remote_campaign_id: str
+    remote_ad_set_id: str
+    remote_ad_id: str
+    remote_creative_id: str
+    destination_url: str
+    pixel_id: str | None
+    page_id: str | None
+    instagram_account_id: str | None
+    daily_budget_minor: int
+    currency: str
+    target_country: str
+    current_configured_statuses: dict[str, str | None]
+    proposed_statuses: dict[str, str]
+
+
+class MetaLaunchReadinessResponse(BaseModel):
+    ready: bool
+    side_effects_performed: bool
+    checks: list[MetaLaunchCheckResponse]
+    launch_plan: MetaLaunchPlanResponse
 
 
 @router.get("/{campaign_id}/meta-ads/publications", response_model=list[MetaCampaignPublicationResponse])
@@ -280,6 +311,27 @@ async def get_meta_ad_remote_state(
         publication_id,
         ad_publication_id,
         workspace.id,
+    )
+
+
+@router.get(
+    "/{campaign_id}/meta-ads/publications/{publication_id}/ads/{ad_publication_id}/launch-readiness",
+    response_model=MetaLaunchReadinessResponse,
+)
+async def get_meta_launch_readiness(
+    campaign_id: UUID,
+    publication_id: UUID,
+    ad_publication_id: UUID,
+    workspace: Workspace = Depends(get_current_workspace),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await MetaAdsLaunchReadinessService(db).get_readiness(
+        campaign_id,
+        publication_id,
+        ad_publication_id,
+        workspace.id,
+        user.id,
     )
 
 
