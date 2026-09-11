@@ -15,7 +15,7 @@ from app.models.meta_ads import (
     MetaAdsCampaignPublication,
     MetaAdsCreativePublication,
 )
-from app.models.store import Store
+from app.models.store import Store, StoreStatus
 from app.models.workspace import MemberRole, WorkspaceMember
 from app.modules.campaigns.application.meta_ads_remote_state import MetaAdsRemoteStateGuard
 from app.modules.integrations.application.meta_ads_connection import MetaAdsConnectionService
@@ -70,6 +70,16 @@ class MetaAdsLaunchReadinessService:
         )
 
         store = await self._get_store(campaign.store_id, workspace_id) if campaign.store_id else None
+        store_connected = store is not None and store.status == StoreStatus.CONNECTED
+        self._add_check(
+            checks,
+            "shopify_store_connection",
+            store_connected,
+            "Campaign Shopify store is connected to Velnio."
+            if store_connected
+            else "Reconnect the campaign Shopify store before launch.",
+        )
+
         destination_ok = self._destination_matches_store(campaign.external_page_url, store)
         self._add_check(
             checks,
