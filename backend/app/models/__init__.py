@@ -15,6 +15,7 @@ from app.models.visual_direction import CampaignVisualDirection
 from app.models.tracking import TrackingEvent, LandingVariant, CampaignPerformanceInsight
 from app.models.google_drive import GoogleDriveConnection, GoogleDriveOAuthState, ProductSourceDocument
 from app.models.meta_ads import (
+    MetaAdsAdPublication,
     MetaAdsAdSetPublication,
     MetaAdsCampaignPublication,
     MetaAdsConnection,
@@ -34,6 +35,6 @@ __all__ = [
     "ProductEnrichment", "CampaignVisualDirection",
     "TrackingEvent", "LandingVariant", "CampaignPerformanceInsight",
     "GoogleDriveConnection", "GoogleDriveOAuthState", "ProductSourceDocument",
-    "MetaAdsConnection", "MetaAdsOAuthState", "MetaAdsCampaignPublication", "MetaAdsAdSetPublication", "MetaAdsCreativePublication",
+    "MetaAdsConnection", "MetaAdsOAuthState", "MetaAdsCampaignPublication", "MetaAdsAdSetPublication", "MetaAdsCreativePublication", "MetaAdsAdPublication",
     "KnowledgeSource", "CampaignBrief",
 ]
