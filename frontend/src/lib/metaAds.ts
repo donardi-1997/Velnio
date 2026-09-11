@@ -65,6 +65,27 @@ export interface MetaDeliveryConfigInput {
   instagram_account_id?: string | null
 }
 
+export interface MetaAdSetPublication {
+  id: string
+  campaign_publication_id: string
+  remote_ad_set_id: string
+  remote_ad_set_name: string
+  remote_status: string
+  target_country: string
+  daily_budget_minor: number
+  currency: string
+  optimization_goal: string
+  billing_event: string
+  bid_strategy: string
+  created_at: string
+  reused?: boolean
+}
+
+export interface MetaAdSetPublishInput {
+  daily_budget_minor: number
+  target_country?: string | null
+}
+
 export const metaAdsApi = {
   status: () => request<MetaAdsStatus>('/meta-ads/status'),
   startConnection: () => request<{ auth_url: string; mode: string }>('/meta-ads/connect'),
@@ -83,6 +104,13 @@ export const metaAdsApi = {
   configureDelivery: (campaignId: string, publicationId: string, data: MetaDeliveryConfigInput) =>
     request<MetaAdsCampaignPublication>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/delivery-config`, {
       method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  getAdSet: (campaignId: string, publicationId: string) =>
+    request<MetaAdSetPublication | null>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ad-set`),
+  publishAdSetPaused: (campaignId: string, publicationId: string, data: MetaAdSetPublishInput) =>
+    request<MetaAdSetPublication>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ad-set`, {
+      method: 'POST',
       body: JSON.stringify(data),
     }),
 }
