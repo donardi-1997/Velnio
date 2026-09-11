@@ -136,6 +136,36 @@ export interface MetaAdRemoteState {
   effective_status: string | null
 }
 
+export interface MetaLaunchCheck {
+  key: string
+  status: 'PASS' | 'FAIL'
+  message: string
+}
+
+export interface MetaLaunchPlan {
+  ad_account_id: string
+  remote_campaign_id: string
+  remote_ad_set_id: string
+  remote_ad_id: string
+  remote_creative_id: string
+  destination_url: string
+  pixel_id: string | null
+  page_id: string | null
+  instagram_account_id: string | null
+  daily_budget_minor: number
+  currency: string
+  target_country: string
+  current_configured_statuses: Record<string, string | null>
+  proposed_statuses: Record<string, string>
+}
+
+export interface MetaLaunchReadiness {
+  ready: boolean
+  side_effects_performed: boolean
+  checks: MetaLaunchCheck[]
+  launch_plan: MetaLaunchPlan
+}
+
 export const metaAdsApi = {
   status: () => request<MetaAdsStatus>('/meta-ads/status'),
   startConnection: () => request<{ auth_url: string; mode: string }>('/meta-ads/connect'),
@@ -174,6 +204,8 @@ export const metaAdsApi = {
     request<MetaAdPublication[]>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ads`),
   adRemoteState: (campaignId: string, publicationId: string, adPublicationId: string) =>
     request<MetaAdRemoteState>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ads/${adPublicationId}/remote-state`),
+  launchReadiness: (campaignId: string, publicationId: string, adPublicationId: string) =>
+    request<MetaLaunchReadiness>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ads/${adPublicationId}/launch-readiness`),
   publishAdPaused: (campaignId: string, publicationId: string, creativePublicationId: string) =>
     request<MetaAdPublication>(`/campaigns/${campaignId}/meta-ads/publications/${publicationId}/ads`, {
       method: 'POST',

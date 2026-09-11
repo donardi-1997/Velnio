@@ -10,6 +10,7 @@ import {
 } from '../lib/metaAds'
 import type { Campaign, CampaignImage } from '../types'
 import { MetaAdLiveState } from './MetaAdLiveState'
+import { MetaLaunchReadiness } from './MetaLaunchReadiness'
 
 
 type CreativeCampaign = Campaign & {
@@ -301,6 +302,11 @@ export function MetaCreativePublisher({ campaignId, publication, adSet }: MetaCr
                         <span className="text-xs text-zinc-500">No activation control in Velnio</span>
                       </div>
                       <MetaAdLiveState
+                        campaignId={campaignId}
+                        publicationId={publication.id}
+                        ad={existingAd}
+                      />
+                      <MetaLaunchReadiness
                         campaignId={campaignId}
                         publicationId={publication.id}
                         ad={existingAd}
