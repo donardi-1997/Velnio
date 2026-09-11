@@ -9,6 +9,7 @@ from app.core.logging import get_logger
 from app.models.campaign import Campaign
 from app.models.meta_ads import MetaAdsAdSetPublication, MetaAdsCampaignPublication
 from app.models.workspace import MemberRole, WorkspaceMember
+from app.modules.campaigns.application.meta_ads_remote_state import MetaAdsRemoteStateGuard
 from app.modules.integrations.application.meta_ads_connection import MetaAdsConnectionService
 from app.modules.integrations.infrastructure.meta_ads import MetaAdsProviderError, get_meta_ads_provider
 
@@ -24,6 +25,7 @@ class MetaAdsAdSetPublishingService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
         self.connection_service = MetaAdsConnectionService(db)
+        self.remote_state_guard = MetaAdsRemoteStateGuard()
 
     async def get_ad_set(
         self,
@@ -93,6 +95,7 @@ class MetaAdsAdSetPublishingService:
             raise BadRequestException("Meta ad account currency is unavailable")
 
         await self._revalidate_delivery_resources(workspace_id, publication)
+        await self.remote_state_guard.require_paused_campaign(access_token, publication)
 
         existing_result = await self.db.execute(
             select(MetaAdsAdSetPublication).where(

@@ -20,6 +20,7 @@ from app.models.meta_ads import (
 from app.models.product import ProductImage
 from app.models.store import Store
 from app.models.workspace import MemberRole, WorkspaceMember
+from app.modules.campaigns.application.meta_ads_remote_state import MetaAdsRemoteStateGuard
 from app.modules.integrations.application.meta_ads_connection import MetaAdsConnectionService
 from app.modules.integrations.infrastructure.meta_ads import MetaAdsProviderError
 from app.modules.integrations.infrastructure.meta_ads_creatives import (
@@ -36,6 +37,7 @@ class MetaAdsCreativePublishingService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
         self.connection_service = MetaAdsConnectionService(db)
+        self.remote_state_guard = MetaAdsRemoteStateGuard()
 
     async def list_creatives(
         self,
@@ -106,6 +108,7 @@ class MetaAdsCreativePublishingService:
             raise BadRequestException("Meta ad account is not active")
 
         await self._revalidate_delivery_resources(workspace_id, publication)
+        await self.remote_state_guard.require_paused_hierarchy(access_token, publication, ad_set)
 
         idempotency_key = self._idempotency_key(
             ad_set.id,
