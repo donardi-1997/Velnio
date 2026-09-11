@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { metaAdsApi, type MetaAdsCampaignPublication } from '../lib/metaAds'
+import { MetaCreativePublisher } from './MetaCreativePublisher'
 
 interface MetaAdSetPublisherProps {
   campaignId: string
@@ -88,11 +89,18 @@ export function MetaAdSetPublisher({ campaignId, publication }: MetaAdSetPublish
       ) : adSetQuery.isError ? (
         <p className="mt-3 text-sm text-red-400">Could not load the Meta Ad Set state.</p>
       ) : adSetQuery.data ? (
-        <div className="mt-3 grid gap-2 rounded-lg border border-zinc-700 bg-zinc-950/30 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <Detail label="Budget" value={`${adSetQuery.data.daily_budget_minor} ${adSetQuery.data.currency} minor units`} />
-          <Detail label="Country" value={adSetQuery.data.target_country} />
-          <Detail label="Optimization" value={adSetQuery.data.optimization_goal} />
-          <Detail label="Meta ID" value={adSetQuery.data.remote_ad_set_id} />
+        <div className="mt-3 space-y-4">
+          <div className="grid gap-2 rounded-lg border border-zinc-700 bg-zinc-950/30 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <Detail label="Budget" value={`${adSetQuery.data.daily_budget_minor} ${adSetQuery.data.currency} minor units`} />
+            <Detail label="Country" value={adSetQuery.data.target_country} />
+            <Detail label="Optimization" value={adSetQuery.data.optimization_goal} />
+            <Detail label="Meta ID" value={adSetQuery.data.remote_ad_set_id} />
+          </div>
+          <MetaCreativePublisher
+            campaignId={campaignId}
+            publication={publication}
+            adSet={adSetQuery.data}
+          />
         </div>
       ) : !configured ? (
         <div className="mt-3 rounded-lg border border-zinc-700 bg-zinc-950/30 px-3 py-2 text-sm text-zinc-400">
